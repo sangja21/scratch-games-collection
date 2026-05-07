@@ -204,16 +204,18 @@ def build_mole_blocks():
     bs = {}
     vrep, op, bool_op, cmp_op = make_helpers(bs)
 
-    # Hole positions in Scratch coords (0,0 = center). 6 holes, 2 rows × 3 cols.
-    # Background SVG holes at (80,205),(240,205),(400,205),(80,305),(240,305),(400,305)
-    # Convert to Scratch: (svgx-240, 180-svgy)
+    # Mole pop-up positions: shifted +46px above each hole center so the mole's
+    # bottom edge sits at the hole's top rim (mole height = 60·1.1 = 66, half = 33;
+    # hole ry = 13). This keeps the mole entirely on the green grass and out of
+    # the dark hole gradient — fixes the "mole hidden by hole" issue.
+    # Hole centers in SVG: (80|240|400, 205|305) → Scratch (svgx-240, 180-svgy)
     holes = [
-        (-160,  -25),  # 1: top left  (svg 80,205 → -160, -25)
-        (   0,  -25),  # 2: top mid
-        ( 160,  -25),  # 3: top right
-        (-160, -125),  # 4: bot left
-        (   0, -125),  # 5: bot mid
-        ( 160, -125),  # 6: bot right
+        (-160,   21),  # 1: top-left   (hole center y -25 + 46)
+        (   0,   21),  # 2: top-mid
+        ( 160,   21),  # 3: top-right
+        (-160,  -79),  # 4: bot-left   (hole center y -125 + 46)
+        (   0,  -79),  # 5: bot-mid
+        ( 160,  -79),  # 6: bot-right
     ]
 
     # === when flag clicked: hide ===
@@ -279,39 +281,26 @@ def build_mole_blocks():
         bs[sx]["parent"] = ifb
         hole_if_blocks.append(ifb)
 
-    # Position below ground at (굴X, -200) (offstage so glide-up looks right)
-    hxv = vrep("굴X", V_HX)
-    g_below = gen(); bs[g_below] = mk("motion_gotoxy",
-        inputs={"X": slot(hxv), "Y": num(-200)})
-    bs[hxv]["parent"] = g_below
+    # go to (굴X, 굴Y) at pop position (above hole, on grass)
+    hxv = vrep("굴X", V_HX); hyv = vrep("굴Y", V_HY)
+    g_pop = gen(); bs[g_pop] = mk("motion_gotoxy",
+        inputs={"X": slot(hxv), "Y": slot(hyv)})
+    bs[hxv]["parent"] = g_pop; bs[hyv]["parent"] = g_pop
 
     show = gen(); bs[show] = mk("looks_show")
 
-    # glide 0.2s to (굴X, 굴Y)  — pop up
-    hxv2 = vrep("굴X", V_HX); hyv = vrep("굴Y", V_HY)
-    glide_up = gen(); bs[glide_up] = mk("motion_glidesecstoxy",
-        inputs={"SECS": num(0.2), "X": slot(hxv2), "Y": slot(hyv)})
-    bs[hxv2]["parent"] = glide_up; bs[hyv]["parent"] = glide_up
-
-    # say 숫자 (forever-ish)
+    # say 숫자 (persistent until cleared)
     nvar = vrep("숫자", V_NUM)
     say_blk = gen(); bs[say_blk] = mk("looks_say",
         inputs={"MESSAGE": slot(nvar, sk=10, sv="")})
     bs[nvar]["parent"] = say_blk
 
-    # wait 1.3 sec
+    # stay visible for 1.3 sec
     wstay = gen(); bs[wstay] = mk("control_wait", inputs={"DURATION": num(1.3)})
 
-    # clear bubble: say ""
+    # clear bubble + hide + delete
     say_clear = gen(); bs[say_clear] = mk("looks_say",
         inputs={"MESSAGE": text_lit("")})
-
-    # glide down
-    hxv3 = vrep("굴X", V_HX)
-    glide_down = gen(); bs[glide_down] = mk("motion_glidesecstoxy",
-        inputs={"SECS": num(0.2), "X": slot(hxv3), "Y": num(-200)})
-    bs[hxv3]["parent"] = glide_down
-
     hide_c = gen(); bs[hide_c] = mk("looks_hide")
     delc = gen(); bs[delc] = mk("control_delete_this_clone")
 
@@ -319,9 +308,9 @@ def build_mole_blocks():
     seq = [(ch,bs[ch]),(set_num,bs[set_num]),(set_hole_num,bs[set_hole_num])]
     for ifb in hole_if_blocks:
         seq.append((ifb, bs[ifb]))
-    seq += [(g_below,bs[g_below]),(show,bs[show]),(glide_up,bs[glide_up]),
-            (say_blk,bs[say_blk]),(wstay,bs[wstay]),(say_clear,bs[say_clear]),
-            (glide_down,bs[glide_down]),(hide_c,bs[hide_c]),(delc,bs[delc])]
+    seq += [(g_pop,bs[g_pop]),(show,bs[show]),(say_blk,bs[say_blk]),
+            (wstay,bs[wstay]),(say_clear,bs[say_clear]),
+            (hide_c,bs[hide_c]),(delc,bs[delc])]
     chain(seq)
 
     # === when this sprite clicked ===
@@ -363,16 +352,29 @@ def build_mole_blocks():
     pv = vrep("isPrime", V_PRIME)
     cond_prime = cmp_op("operator_equals", pv, 1)
 
+    # Correct branch: 점수+=1, reset pitch, play pop (normal)
     inc = gen(); bs[inc] = mk("data_changevariableby",
         inputs={"VALUE": num(1)}, fields={"VARIABLE": ["점수", V_SCORE]})
-    snm = gen(); bs[snm] = mk("sound_sounds_menu",
+    pitch_ok = gen(); bs[pitch_ok] = mk("sound_seteffectto",
+        inputs={"VALUE": num(0)}, fields={"EFFECT": ["PITCH", None]})
+    snm_ok = gen(); bs[snm_ok] = mk("sound_sounds_menu",
         fields={"SOUND_MENU": ["pop", None]}, shadow=True)
-    snd = gen(); bs[snd] = mk("sound_play", inputs={"SOUND_MENU": [1, snm]})
-    bs[snm]["parent"] = snd
-    chain([(inc,bs[inc]),(snd,bs[snd])])
+    snd_ok = gen(); bs[snd_ok] = mk("sound_play",
+        inputs={"SOUND_MENU": [1, snm_ok]})
+    bs[snm_ok]["parent"] = snd_ok
+    chain([(inc,bs[inc]),(pitch_ok,bs[pitch_ok]),(snd_ok,bs[snd_ok])])
 
+    # Wrong branch: 점수-=1, lower pitch (deeper "thud"), play pop
     dec = gen(); bs[dec] = mk("data_changevariableby",
         inputs={"VALUE": num(-1)}, fields={"VARIABLE": ["점수", V_SCORE]})
+    pitch_no = gen(); bs[pitch_no] = mk("sound_seteffectto",
+        inputs={"VALUE": num(-300)}, fields={"EFFECT": ["PITCH", None]})
+    snm_no = gen(); bs[snm_no] = mk("sound_sounds_menu",
+        fields={"SOUND_MENU": ["pop", None]}, shadow=True)
+    snd_no = gen(); bs[snd_no] = mk("sound_play",
+        inputs={"SOUND_MENU": [1, snm_no]})
+    bs[snm_no]["parent"] = snd_no
+    chain([(dec,bs[dec]),(pitch_no,bs[pitch_no]),(snd_no,bs[snd_no])])
 
     if_else = gen(); bs[if_else] = mk("control_if_else",
         inputs={"CONDITION":[2, cond_prime],
