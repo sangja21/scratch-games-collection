@@ -110,6 +110,7 @@ V_FRX   = "varFRX10"     # spawn x for enemy bullet
 V_FRY   = "varFRY11"
 V_SX    = "varSX12"      # enemy local: formation slot x
 V_SY    = "varSY13"      # enemy local: formation slot y
+V_FIREP = "varFireP14"   # enemy fire-chance denominator (smaller = more fire)
 
 BR_START   = "brStart01"
 BR_SPAWN   = "brSpawn02"
@@ -171,6 +172,8 @@ def build_stage_blocks():
         inputs={"VALUE": num(1)}, fields={"VARIABLE": ["게임상태", V_STATE]})
     s_speed = gen(); bs[s_speed] = mk("data_setvariableto",
         inputs={"VALUE": num(1.5)}, fields={"VARIABLE": ["적_속도", V_SPEED]})
+    s_firep = gen(); bs[s_firep] = mk("data_setvariableto",
+        inputs={"VALUE": num(400)}, fields={"VARIABLE": ["발사확률", V_FIREP]})
 
     bm_start = gen(); bs[bm_start] = mk("event_broadcast_menu",
         fields={"BROADCAST_OPTION": ["게임시작", BR_START]}, shadow=True)
@@ -179,7 +182,8 @@ def build_stage_blocks():
     bs[bm_start]["parent"] = bc_start
 
     chain([(h,bs[h]),(s_score,bs[s_score]),(s_life,bs[s_life]),(s_wave,bs[s_wave]),
-           (s_state,bs[s_state]),(s_speed,bs[s_speed]),(bc_start,bs[bc_start])])
+           (s_state,bs[s_state]),(s_speed,bs[s_speed]),(s_firep,bs[s_firep]),
+           (bc_start,bs[bc_start])])
 
     # === on 게임시작: setup formation values, broadcast 적생성, run formation loop ===
     h2 = gen(); bs[h2] = mk("event_whenbroadcastreceived", top=True, x=20, y=200,
@@ -272,6 +276,19 @@ def build_stage_blocks():
         inputs={"VALUE": num(1)}, fields={"VARIABLE": ["라운드", V_WAVE]})
     chg_speed = gen(); bs[chg_speed] = mk("data_changevariableby",
         inputs={"VALUE": num(0.5)}, fields={"VARIABLE": ["적_속도", V_SPEED]})
+
+    # 발사확률 -= 40, clamp min 80 (so fire rate ramps from ~1/sec to ~5/sec)
+    chg_firep = gen(); bs[chg_firep] = mk("data_changevariableby",
+        inputs={"VALUE": num(-40)}, fields={"VARIABLE": ["발사확률", V_FIREP]})
+    firep_chk = vrep("발사확률", V_FIREP)
+    cond_low = cmp_op("operator_lt", firep_chk, 80)
+    set_firep_min = gen(); bs[set_firep_min] = mk("data_setvariableto",
+        inputs={"VALUE": num(80)}, fields={"VARIABLE": ["발사확률", V_FIREP]})
+    if_low = gen(); bs[if_low] = mk("control_if",
+        inputs={"CONDITION":[2, cond_low], "SUBSTACK":[2, set_firep_min]})
+    bs[cond_low]["parent"] = if_low
+    bs[set_firep_min]["parent"] = if_low
+
     r_fx = gen(); bs[r_fx] = mk("data_setvariableto",
         inputs={"VALUE": num(0)}, fields={"VARIABLE": ["진영X", V_FX]})
     r_fy = gen(); bs[r_fy] = mk("data_setvariableto",
@@ -285,6 +302,7 @@ def build_stage_blocks():
     bs[bm_sp2]["parent"] = bc_sp2
 
     chain([(h3,bs[h3]),(chg_wave,bs[chg_wave]),(chg_speed,bs[chg_speed]),
+           (chg_firep,bs[chg_firep]),(if_low,bs[if_low]),
            (r_fx,bs[r_fx]),(r_fy,bs[r_fy]),(r_dir,bs[r_dir]),(bc_sp2,bs[bc_sp2])])
 
     return bs
@@ -560,8 +578,10 @@ def build_enemy_blocks():
     bs[tc]["parent"] = if_hit
     bs[inc_score]["parent"] = if_hit
 
-    # random fire chance: if (random 1..400) = 1 → fire bullet
-    rand_n = op("operator_random", 1, 400, key1="FROM", key2="TO")
+    # random fire chance: if (random 1..발사확률) = 1 → fire bullet
+    # 발사확률 starts 400 and shrinks 40 per round (min 80) → fire rate scales with wave
+    firep_v = vrep("발사확률", V_FIREP)
+    rand_n = op("operator_random", 1, firep_v, key1="FROM", key2="TO")
     cond_fire = cmp_op("operator_equals", rand_n, 1)
 
     xp_self = gen(); bs[xp_self] = mk("motion_xposition")
@@ -690,16 +710,25 @@ def build_gameover_blocks():
     front = gen(); bs[front] = mk("looks_gotofrontback",
         fields={"FRONT_BACK": ["front", None]})
 
-    # wait until 게임상태 = 0
-    state_v = vrep("게임상태", V_STATE)
-    cond_zero = cmp_op("operator_equals", state_v, 0)
-    wait_until = gen(); bs[wait_until] = mk("control_wait_until",
+    # First wait for the game to actually START (state=1) — otherwise on
+    # restart the leftover 게임상태=0 from the previous game would make
+    # the second wait below pass instantly and re-show the banner.
+    state_v1 = vrep("게임상태", V_STATE)
+    cond_one = cmp_op("operator_equals", state_v1, 1)
+    wait_start = gen(); bs[wait_start] = mk("control_wait_until",
+        inputs={"CONDITION":[2, cond_one]})
+    bs[cond_one]["parent"] = wait_start
+
+    # Then wait until the game ends (state=0)
+    state_v2 = vrep("게임상태", V_STATE)
+    cond_zero = cmp_op("operator_equals", state_v2, 0)
+    wait_over = gen(); bs[wait_over] = mk("control_wait_until",
         inputs={"CONDITION":[2, cond_zero]})
-    bs[cond_zero]["parent"] = wait_until
+    bs[cond_zero]["parent"] = wait_over
 
     show = gen(); bs[show] = mk("looks_show")
     chain([(h,bs[h]),(hi,bs[hi]),(g,bs[g]),(sz,bs[sz]),(front,bs[front]),
-           (wait_until,bs[wait_until]),(show,bs[show])])
+           (wait_start,bs[wait_start]),(wait_over,bs[wait_over]),(show,bs[show])])
     return bs
 
 # ==============================================================
@@ -773,6 +802,7 @@ def main():
             V_ECNT:  ["적수", 0],
             V_FRX:   ["발사X", 0],
             V_FRY:   ["발사Y", 0],
+            V_FIREP: ["발사확률", 400],
         },
         "lists": {},
         "broadcasts": {BR_START:"게임시작", BR_SPAWN:"적생성",
