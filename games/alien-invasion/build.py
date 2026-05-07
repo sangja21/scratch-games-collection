@@ -47,6 +47,22 @@ E_BULLET_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="7" height="14" 
   <rect x="2" y="2" width="3" height="10" rx="1.5" fill="#FFCDD2" opacity="0.6"/>
 </svg>"""
 
+# -------- Game Over banner --------
+GAME_OVER_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="360" height="160" viewBox="0 0 360 160">
+  <rect x="5" y="5" width="350" height="150" rx="14"
+        fill="#000000" opacity="0.88"
+        stroke="#FF1744" stroke-width="4"/>
+  <text x="180" y="72" text-anchor="middle"
+        fill="#FF1744" font-family="Arial, Helvetica, sans-serif"
+        font-size="46" font-weight="bold">GAME OVER</text>
+  <text x="180" y="110" text-anchor="middle"
+        fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif"
+        font-size="20">▶ 다시 시작하기</text>
+  <text x="180" y="138" text-anchor="middle"
+        fill="#FFB74D" font-family="Arial, Helvetica, sans-serif"
+        font-size="14">최종 점수는 좌상단 모니터 확인</text>
+</svg>"""
+
 def rotate_svg(svg_content, degrees, cx, cy):
     """Wrap SVG inner content in a <g transform="rotate(...)"> for visual rotation."""
     open_end = svg_content.find('>') + 1
@@ -414,17 +430,21 @@ def build_player_bullet_blocks():
     # body: change y by 12, if touching enemy delete, wait
     chy = gen(); bs[chy] = mk("motion_changeyby", inputs={"DY": num(13)})
 
-    # if touching 외계인 → delete this clone
+    # if touching 외계인 → wait 0.05s (so the enemy clone has time to run its
+    # own collision tick and self-destruct) → delete this clone
     tm = gen(); bs[tm] = mk("sensing_touchingobjectmenu",
         fields={"TOUCHINGOBJECTMENU": ["외계인", None]}, shadow=True)
     tc = gen(); bs[tc] = mk("sensing_touchingobject",
         inputs={"TOUCHINGOBJECTMENU":[1, tm]})
     bs[tm]["parent"] = tc
+    wait_kill = gen(); bs[wait_kill] = mk("control_wait",
+        inputs={"DURATION": num(0.05)})
     del_a = gen(); bs[del_a] = mk("control_delete_this_clone")
+    chain([(wait_kill,bs[wait_kill]),(del_a,bs[del_a])])
     if_hit = gen(); bs[if_hit] = mk("control_if",
-        inputs={"CONDITION":[2, tc], "SUBSTACK":[2, del_a]})
+        inputs={"CONDITION":[2, tc], "SUBSTACK":[2, wait_kill]})
     bs[tc]["parent"] = if_hit
-    bs[del_a]["parent"] = if_hit
+    bs[wait_kill]["parent"] = if_hit
 
     wt = gen(); bs[wt] = mk("control_wait", inputs={"DURATION": num(0.02)})
 
@@ -656,6 +676,33 @@ def build_enemy_bullet_blocks():
     return bs
 
 # ==============================================================
+#  GAME OVER banner blocks
+# ==============================================================
+def build_gameover_blocks():
+    bs = {}
+    vrep, op, cmp_op, _ = make_helpers(bs)
+
+    # when flag clicked → hide, go to center, wait until 게임상태=0, show
+    h = gen(); bs[h] = mk("event_whenflagclicked", top=True, x=20, y=20)
+    hi = gen(); bs[hi] = mk("looks_hide")
+    g = gen(); bs[g] = mk("motion_gotoxy", inputs={"X": num(0), "Y": num(0)})
+    sz = gen(); bs[sz] = mk("looks_setsizeto", inputs={"SIZE": num(100)})
+    front = gen(); bs[front] = mk("looks_gotofrontback",
+        fields={"FRONT_BACK": ["front", None]})
+
+    # wait until 게임상태 = 0
+    state_v = vrep("게임상태", V_STATE)
+    cond_zero = cmp_op("operator_equals", state_v, 0)
+    wait_until = gen(); bs[wait_until] = mk("control_wait_until",
+        inputs={"CONDITION":[2, cond_zero]})
+    bs[cond_zero]["parent"] = wait_until
+
+    show = gen(); bs[show] = mk("looks_show")
+    chain([(h,bs[h]),(hi,bs[hi]),(g,bs[g]),(sz,bs[sz]),(front,bs[front]),
+           (wait_until,bs[wait_until]),(show,bs[show])])
+    return bs
+
+# ==============================================================
 #  ASSEMBLE PROJECT
 # ==============================================================
 def main():
@@ -694,11 +741,17 @@ def main():
     with open(f"{WORK}/{pop_md5}.wav", "wb") as f:
         f.write(pop_bytes)
 
-    stage_blocks   = build_stage_blocks()
-    player_blocks  = build_player_blocks()
-    pbullet_blocks = build_player_bullet_blocks()
-    enemy_blocks   = build_enemy_blocks()
-    ebullet_blocks = build_enemy_bullet_blocks()
+    # Save game over banner
+    go_md5 = md5_bytes(GAME_OVER_SVG.encode("utf-8"))
+    with open(f"{WORK}/{go_md5}.svg", "w", encoding="utf-8") as f:
+        f.write(GAME_OVER_SVG)
+
+    stage_blocks    = build_stage_blocks()
+    player_blocks   = build_player_blocks()
+    pbullet_blocks  = build_player_bullet_blocks()
+    enemy_blocks    = build_enemy_blocks()
+    ebullet_blocks  = build_enemy_bullet_blocks()
+    gameover_blocks = build_gameover_blocks()
 
     pop_sound = lambda: {
         "name": "pop", "assetId": pop_md5, "dataFormat": "wav",
@@ -817,8 +870,24 @@ def main():
          "visible": True, "sliderMin": 0, "sliderMax": 100, "isDiscrete": True},
     ]
 
+    gameover = {
+        "isStage": False, "name": "게임오버",
+        "variables": {}, "lists": {}, "broadcasts": {},
+        "blocks": gameover_blocks, "comments": {},
+        "currentCostume": 0,
+        "costumes": [{
+            "name": "banner", "bitmapResolution": 1, "dataFormat": "svg",
+            "assetId": go_md5, "md5ext": f"{go_md5}.svg",
+            "rotationCenterX": 180, "rotationCenterY": 80
+        }],
+        "sounds": [pop_sound()],
+        "volume": 100, "layerOrder": 5, "visible": False,
+        "x": 0, "y": 0, "size": 100, "direction": 90,
+        "draggable": False, "rotationStyle": "don't rotate"
+    }
+
     project = {
-        "targets": [stage, player, pbullet, enemy, ebullet],
+        "targets": [stage, player, pbullet, enemy, ebullet, gameover],
         "monitors": monitors,
         "extensions": [],
         "meta": {"semver": "3.0.0", "vm": "13.7.4-svg",
