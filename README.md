@@ -50,6 +50,8 @@ scratch-games-collection/
 2. 게임 파일들과 README 작성
 3. 위 게임 목록 표에 한 줄 추가
 
+> 💡 **다음에 만들 게임 후보 모음**: [`docs/game-candidates.md`](docs/game-candidates.md) — 클래식 아케이드 / 학습형 / 두뇌 퍼즐 / 액션 등 카테고리별로 정리되어 있습니다.
+
 ## 📜 라이선스
 
 코드(`build.py`, README): MIT
