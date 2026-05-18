@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="200" viewBox="0 0 360 200">
+  <rect x="5" y="5" width="350" height="190" rx="16"
+        fill="#0E122E" opacity="0.94"
+        stroke="#7AE2FF" stroke-width="3"/>
+  <text x="180" y="60" text-anchor="middle"
+        fill="#7AE2FF" font-family="Arial, Helvetica, sans-serif"
+        font-size="36" font-weight="bold">CLEAR!</text>
+  <text x="180" y="110" text-anchor="middle"
+        fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif"
+        font-size="18">점수 / 최대 콤보는 좌상단 모니터 확인</text>
+  <text x="180" y="150" text-anchor="middle"
+        fill="#FDE68A" font-family="Arial, Helvetica, sans-serif"
+        font-size="16">초록 깃발을 다시 누르면 재시작</text>
+  <text x="180" y="178" text-anchor="middle"
+        fill="#94A3B8" font-family="Arial, Helvetica, sans-serif"
+        font-size="13">D / F / J / K 키</text>
+</svg>

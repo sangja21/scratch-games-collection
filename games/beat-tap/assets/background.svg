@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="360" viewBox="0 0 480 360">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#0A0D24"/>
+      <stop offset="50%"  stop-color="#0E122E"/>
+      <stop offset="100%" stop-color="#070819"/>
+    </linearGradient>
+    <linearGradient id="judgeLine" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%"  stop-color="#7AE2FF" stop-opacity="0.2"/>
+      <stop offset="50%" stop-color="#7AE2FF" stop-opacity="1.0"/>
+      <stop offset="100%" stop-color="#7AE2FF" stop-opacity="0.2"/>
+    </linearGradient>
+  </defs>
+  <rect width="480" height="360" fill="url(#bg)"/>
+
+  <!-- decorative neon glow at top -->
+  <ellipse cx="240" cy="0" rx="240" ry="40" fill="#D946EF" opacity="0.10"/>
+
+  <!-- lane rectangles -->
+  <rect x="88.0" y="40" width="64" height="280" fill="#1A1F3A" opacity="0.85"/>
+  <rect x="88.0" y="40" width="64" height="280" fill="none" stroke="#3B4378" stroke-width="1"/>
+  <rect x="168.0" y="40" width="64" height="280" fill="#22284A" opacity="0.85"/>
+  <rect x="168.0" y="40" width="64" height="280" fill="none" stroke="#3B4378" stroke-width="1"/>
+  <rect x="248.0" y="40" width="64" height="280" fill="#1A1F3A" opacity="0.85"/>
+  <rect x="248.0" y="40" width="64" height="280" fill="none" stroke="#3B4378" stroke-width="1"/>
+  <rect x="328.0" y="40" width="64" height="280" fill="#22284A" opacity="0.85"/>
+  <rect x="328.0" y="40" width="64" height="280" fill="none" stroke="#3B4378" stroke-width="1"/>
+
+
+  <!-- judgment line + glow -->
+  <rect x="40" y="308" width="400" height="4" fill="url(#judgeLine)"/>
+  <rect x="40" y="309" width="400" height="2" fill="#FFFFFF" opacity="0.6"/>
+
+  <!-- key labels -->
+  <rect x="98" y="318" width="44" height="38" rx="8" fill="#0E1224" stroke="#7AE2FF" stroke-width="2"/>
+  <text x="120" y="345" text-anchor="middle" fill="#7AE2FF"
+        font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="bold">D</text>
+  <rect x="178" y="318" width="44" height="38" rx="8" fill="#0E1224" stroke="#7AE2FF" stroke-width="2"/>
+  <text x="200" y="345" text-anchor="middle" fill="#7AE2FF"
+        font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="bold">F</text>
+  <rect x="258" y="318" width="44" height="38" rx="8" fill="#0E1224" stroke="#7AE2FF" stroke-width="2"/>
+  <text x="280" y="345" text-anchor="middle" fill="#7AE2FF"
+        font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="bold">J</text>
+  <rect x="338" y="318" width="44" height="38" rx="8" fill="#0E1224" stroke="#7AE2FF" stroke-width="2"/>
+  <text x="360" y="345" text-anchor="middle" fill="#7AE2FF"
+        font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="bold">K</text>
+
+
+  <!-- title strip -->
+  <text x="240" y="28" text-anchor="middle" fill="#E0E5FF"
+        font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="bold"
+        opacity="0.85">BEAT TAP</text>
+</svg>
