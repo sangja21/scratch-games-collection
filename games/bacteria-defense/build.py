@@ -575,13 +575,16 @@ def build_bacteria_blocks():
         regardless of whether a visual clone is created (so the math is
         honest). Returns the head id (and registers blocks in bs).
         """
-        # Set spawn coords to my x/y (caller — i.e. this clone)
-        xp = gen(); bs[xp] = mk("motion_xposition")
+        # Scatter children across the dish on every split — previously children
+        # spawned at parent.x/y + ±6 jitter, causing family clusters. Dish
+        # center is (0, -40) with radius 135; inscribed square is
+        # x∈(-90, 90), y∈(-130, 50) which keeps clones safely inside.
+        xp = op("operator_random", -90, 90, key1="FROM", key2="TO")
         set_sx = gen(); bs[set_sx] = mk("data_setvariableto",
             inputs={"VALUE": slot(xp)},
             fields={"VARIABLE": ["SpawnX", V_SPAWNX]})
         bs[xp]["parent"] = set_sx
-        yp = gen(); bs[yp] = mk("motion_yposition")
+        yp = op("operator_random", -130, 50, key1="FROM", key2="TO")
         set_sy = gen(); bs[set_sy] = mk("data_setvariableto",
             inputs={"VALUE": slot(yp)},
             fields={"VARIABLE": ["SpawnY", V_SPAWNY]})
