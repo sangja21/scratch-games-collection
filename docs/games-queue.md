@@ -41,8 +41,8 @@
 | # | slug | 한 줄 컨셉 | 주요 메커닉 | status |
 |---|------|------------|-------------|--------|
 | 11 | `doodle-jump` | 발판을 밟고 끝없이 위로 점프, 떨어지면 게임오버 | 좌우 이동, 자동 점프, 화면 스크롤 | done |
-| 12 | `rocket-trajectory` | 각도+파워 슬라이더로 로켓 발사, 행성에 정확히 착륙 | 포물선 발사, 중력, 목표 행성 | pending |
-| 13 | `meteor-dodge` | 우주선이 화면 가득 떨어지는 운석을 회피 | 자유 이동, 운석 클론 무한 생성, 생존시간 점수 | pending |
+| 12 | `rocket-trajectory` | 각도+파워 슬라이더로 로켓 발사, 행성에 정확히 착륙 | 포물선 발사, 중력, 목표 행성 | failed: agent-stall (600s no progress) |
+| 13 | `meteor-dodge` | 우주선이 화면 가득 떨어지는 운석을 회피 | 자유 이동, 운석 클론 무한 생성, 생존시간 점수 | done |
 | 14 | `helicopter-cave` | 한 버튼으로 헬리콥터 상승, 좁아지는 동굴 통과 | 1버튼 (꾹 누르기), 절차적 동굴 폭, 충돌 게임오버 | pending |
 | 15 | `station-docking` | 우주선을 정밀하게 움직여 우주정거장에 도킹 | 미세 조작, 속도/각도 일치, 정밀도 점수 | pending |
 
@@ -81,4 +81,4 @@
 ## 진행 상황 (자동 갱신)
 
 - 시작: 2026-05-18
-- pending: 19 / in_progress: 0 / done: 11 / failed: 0
+- pending: 17 / in_progress: 0 / done: 12 / failed: 1
