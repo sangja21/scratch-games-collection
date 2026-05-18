@@ -32,7 +32,7 @@
 | 5 | `balloon-shooter` | 떠다니는 다양한 색·크기 풍선을 활(클릭)로 격파 | 마우스 클릭, 크기별 점수, 시간제한 | done |
 | 6 | `asteroids` | 우주선이 관성으로 미끄러지며 소행성을 격파 | 회전+분사+발사, 관성, 화면 wrap | done |
 | 7 | `dogfight` | 두 비행기 1대1 도그파이트, AI 적 회피 + 사격 | 비행 회전, 후방 사격 회피, 1라운드 짧게 | done |
-| 8 | `shuriken-throw` | 닌자가 수직 라인을 따라 수리검 던져 표적 격파 | 좌우 이동, 수직 발사, 표적 패턴 | pending |
+| 8 | `shuriken-throw` | 닌자가 수직 라인을 따라 수리검 던져 표적 격파 | 좌우 이동, 수직 발사, 표적 패턴 | done |
 | 9 | `ghost-hunt` | 어두운 방에 깜빡이며 나타나는 유령을 회중전등으로 사격 | 마우스 조준, 짧은 표시 시간, 분위기 | pending |
 | 10 | `boss-rush` | 1대 보스 vs 플레이어, 패턴 외워서 회피하며 사격 | 보스 페이즈, 탄막, 체력바 | pending |
 
@@ -81,4 +81,4 @@
 ## 진행 상황 (자동 갱신)
 
 - 시작: 2026-05-18
-- pending: 23 / in_progress: 0 / done: 7 / failed: 0
+- pending: 22 / in_progress: 0 / done: 8 / failed: 0
