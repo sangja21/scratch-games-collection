@@ -3,12 +3,20 @@
 > 다음에 만들 게임 후보를 모아둔 문서입니다. 인터넷 자료(영어/한국어 Scratch 강의·블로그·MIT 공식)에서 반복적으로 등장하는 게임들 + 컬렉션 컨셉(학습형 + 액션 보너스)에 어울리는 후보들을 카테고리별로 정리했습니다.
 >
 > **작성일**: 2026-05-07
-> **현재 컬렉션 상태**: 6개 게임 — `polynomial-shooter`, `whack-a-prime`, `alien-invasion`, `bacteria-defense`, `exponential-shooter`, `beat-tap`
+> **현재 컬렉션 상태**: 12개 게임 — `polynomial-shooter`, `whack-a-prime`, `alien-invasion`, `bacteria-defense`, `exponential-shooter`, `beat-tap`, `decibel-dj`, `octave-piano`, `radioactive-mine`, `compound-cards`, `ph-titration`, `richter-tracker`
 >
-> **2026-05-12 빌드 (단원: 지수와 로그) — ✅ 완료**:
+> **2026-05-12 빌드 (단원: 지수와 로그 1차) — ✅ 완료**:
 > 1. ✅ 🦠 박테리아 디펜스 → [`plan-bacteria-defense.md`](plan-bacteria-defense.md) → `games/bacteria-defense/`
 > 2. ✅ 📈 지수함수 슈터 → [`plan-exponential-shooter.md`](plan-exponential-shooter.md) → `games/exponential-shooter/`
 > 3. ✅ 🎵 비트 탭 (리듬 게임) → [`plan-beat-tap.md`](plan-beat-tap.md) → `games/beat-tap/`
+>
+> **2026-05-18 빌드 (단원: 지수와 로그 2차 — 하네스 풀 자동화) — ✅ 완료**:
+> 1. ✅ 🔊 데시벨 DJ → [`plan-decibel-dj.md`](plan-decibel-dj.md) → `games/decibel-dj/`
+> 2. ✅ 🎹 옥타브 피아노 → [`plan-octave-piano.md`](plan-octave-piano.md) → `games/octave-piano/`
+> 3. ✅ ☢ 반감기 광산 → [`plan-radioactive-mine.md`](plan-radioactive-mine.md) → `games/radioactive-mine/`
+> 4. ✅ 💰 복리 카드 게임 → [`plan-compound-cards.md`](plan-compound-cards.md) → `games/compound-cards/`
+> 5. ✅ 🧪 pH 적정 실험실 → [`plan-ph-titration.md`](plan-ph-titration.md) → `games/ph-titration/`
+> 6. ✅ 📡 리히터 진앙 추적 → [`plan-richter-tracker.md`](plan-richter-tracker.md) → `games/richter-tracker/`
 
 ## 난이도 표기
 
@@ -78,20 +86,18 @@
 
 > 사용자 요청으로 **지수/로그 · 벡터 · 사인함수** 세 단원에 대한 후보를 깊게 정리. 각 단원에서 2~3개 골라 한 번의 빌드 묶음으로 만들 수 있음.
 
-### 📊 지수 / 로그 (이미 2개 빌드됨)
+### 📊 지수 / 로그 (✅ 8/8 모두 빌드 완료)
 
 | 게임 | 메커닉 | 난이도 | 학습 포인트 |
 |------|--------|-------|------------|
 | ✅ 박테리아 디펜스 | 분열하는 박테리아 클릭 제거, `log_r(N_max/N)` HUD | ★★★ | (완료) |
 | ✅ 지수함수 슈터 | `y = a·b^x` 슬라이더로 풍선 격파 + 로그스케일 토글 | ★★★ | (완료) |
-| **반감기 광산** | 방사능 광물이 T초마다 절반으로 감소. "지금 캘까 / 더 기다릴까" 타이밍 | ★★★ | `N(t) = N₀·(1/2)^(t/T)` 직관 |
-| **복리 카드 게임** | 매 턴 이자율 카드를 선택해 자산 키우기. 위험-수익 트레이드오프 | ★★ | `A = P·(1+r)^n` |
-| **pH 적정 실험실** | 산/염기 용액을 한 방울씩 추가해 목표 pH 도달. 로그 스케일 막대 | ★★★ | `pH = -log[H⁺]` |
-| **리히터 진앙 추적** | 두 지진계 진폭 비교 → 매그니튜드 차이 계산해 답 입력 | ★★★ | `M = log(A/A₀)` |
-| **데시벨 DJ** | 슬라이더로 볼륨(dB)을 맞춰 노이즈 통과. dB는 합산이 아닌 로그 합 | ★★ | `dB = 10·log(I/I₀)` |
-| **옥타브 피아노** | 주파수 2배 = 한 옥타브. 같은 음(다른 옥타브)을 찾아 짝짓기 | ★★ | 음악 = 로그 스케일 |
-
-**👉 추천 묶음**: `반감기 광산` + `복리 카드 게임` (서로 정반대 방향 — 감쇠 vs 성장, 학습 대비 효과)
+| ✅ 반감기 광산 | 방사능 광물이 T초마다 절반으로 감소. "지금 캘까 / 더 기다릴까" 타이밍 | ★★★ (147 블록) | `N(t) = N₀·(1/2)^(t/T)` 직관 |
+| ✅ 복리 카드 게임 | 매 턴 이자율 카드를 선택해 자산 키우기. 위험-수익 트레이드오프 | ★★ → 실제 ★★★ (307 블록) | `A = P·(1+r)^n`, `필요r = (목표/현재)^(1/n) − 1` |
+| ✅ pH 적정 실험실 | 산/염기 용액을 한 방울씩 추가해 목표 pH 도달. 로그 스케일 막대 | ★★★ (198 블록) | `pH = -log[H⁺]` |
+| ✅ 리히터 진앙 추적 | 두 지진계 진폭 비교 → 매그니튜드 차이 계산해 답 입력 | ★★★ (194 블록) | `M = log(A/A₀)` |
+| ✅ 데시벨 DJ | 슬라이더로 볼륨(dB)을 맞춰 노이즈 통과. dB는 합산이 아닌 로그 합 | ★★ (175 블록) | `dB = 10·log(I/I₀)` |
+| ✅ 옥타브 피아노 | 주파수 2배 = 한 옥타브. 같은 음(다른 옥타브)을 찾아 짝짓기 | ★★ → 실제 ★★★ (375 블록) | 음악 = 로그 스케일, `log₂(f₂/f₁)` |
 
 ### ➡️ 벡터
 
