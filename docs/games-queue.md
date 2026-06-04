@@ -74,11 +74,12 @@
 | 27 | `cowboy-duel` | "DRAW!" 신호 후 누가 먼저 사격하나 반응속도 | 반응속도, 단일 키, 베스트 시간 | done |
 | 28 | `gold-miner` | 광부가 후크를 내려 보석/금괴 끌어올리기, 시간 안에 목표 점수 | 1버튼 타이밍, 무게별 속도, 라운드 목표 | done |
 | 29 | `paper-plane` | 각도+힘으로 종이비행기 던지기, 풍속 변화 속에서 멀리 | 발사 메커닉, 바람 변수, 거리 점수 | done |
-| 30 | `balloon-pump` | 풍선 펌프, 너무 많이 펌프하면 터짐, 직전에 멈춰서 점수 | 1버튼 길게 누르기, 임계점 추측, 운+감 | pending |
+| 30 | `balloon-pump` | 풍선 펌프, 너무 많이 펌프하면 터짐, 직전에 멈춰서 점수 | 1버튼 길게 누르기, 임계점 추측, 운+감 | done |
 
 ---
 
 ## 진행 상황 (자동 갱신)
 
 - 시작: 2026-05-18
-- pending: 1 / in_progress: 0 / done: 28 / failed: 1
+- pending: 0 / in_progress: 0 / done: 29 / failed: 1
+- 완료: 2026-06-04 — 큐 30개 중 29개 done, 1개 failed(`rocket-trajectory`)
