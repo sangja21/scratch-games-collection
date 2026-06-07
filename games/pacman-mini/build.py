@@ -71,11 +71,17 @@ __WALLS__
   </g>
 </svg>""".replace("__WALLS__", _maze_walls())
 
-# -------- 팩맨: 노란 원 + 입 쐐기 (22x22) --------
-PACMAN_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">
+# -------- 팩맨: 노란 원 + 입 쐐기 (22x22) — 입벌림(open) / 다묾(closed) 2코스튬 --------
+PACMAN_OPEN_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">
   <path d="M11 11 L21 6 A10 10 0 1 0 21 16 Z" fill="#FFEB3B" stroke="#FBC02D" stroke-width="1"/>
   <circle cx="10" cy="6" r="1.4" fill="#000000"/>
 </svg>"""
+PACMAN_CLOSED_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">
+  <circle cx="11" cy="11" r="10" fill="#FFEB3B" stroke="#FBC02D" stroke-width="1"/>
+  <circle cx="10" cy="6" r="1.4" fill="#000000"/>
+</svg>"""
+# keep backward-compat alias used in main()
+PACMAN_SVG = PACMAN_OPEN_SVG
 
 # -------- 유령 색 코스튬 (22x22) : 빨강/분홍/청록/주황 + scared(파랑) + eyes --------
 def _ghost_svg(body, eye_dir="down"):
@@ -308,7 +314,8 @@ V_GTC     = "varGTc39"       # 목표 col (팩맨 or 집)
 V_GTR     = "varGTr40"       # 목표 row
 V_GPCT    = "varGPct41"      # 추격확률
 V_GPICK   = "varGPick42"     # 랜덤 후보 선택 인덱스
-V_GSEEN   = "varGSeen43"     # 랜덤 분기: 본 후보 수
+V_GSEEN   = "varGSeen43"     # 후보거리 (거리 계산 임시)
+V_GSEENC  = "varGSeenC44"    # 본후보 수 (랜덤 선택 카운터)
 
 # 먹이 sprite-local
 V_DRAWIDX = "varDrawIdx22"
@@ -921,7 +928,7 @@ def build_ghost_blocks():
         inputs={"FROM": num(1), "TO": slot(cand_r2)})
     bs[cand_r2]["parent"] = rndpick
     set_pickn = set_reporter(bs, "랜덤선택", V_GPICK, rndpick)
-    set_seen = setvar(bs, "본후보", V_GSEEN, 0)   # reuse V_GSEEN as 'seen' counter now
+    set_seen = setvar(bs, "본후보", V_GSEENC, 0)   # dedicated variable for seen counter
     # 4방향 재훑기: 후보면 본후보++ ; if 본후보=랜덤선택: 유방향=시험방향
     rand_seq = [(set_pickn,bs[set_pickn]),(set_seen,bs[set_seen])]
     for d in (1,2,3,4):
@@ -940,8 +947,8 @@ def build_ghost_blocks():
         item_g = item_of("보드", L_BOARD, idx_g)
         c_open = cmp_op("operator_not_equals", item_g, 0)
         cond_ok = bool_op("operator_and", c_notback, c_open)
-        inc_seen = changevar(bs, "본후보", V_GSEEN, 1)
-        seen_r = vrep("본후보", V_GSEEN); pick_r = vrep("랜덤선택", V_GPICK)
+        inc_seen = changevar(bs, "본후보", V_GSEENC, 1)
+        seen_r = vrep("본후보", V_GSEENC); pick_r = vrep("랜덤선택", V_GPICK)
         c_match = cmp_op("operator_equals", seen_r, pick_r)
         tvv = vrep("시험방향", V_GTRY); set_d = set_reporter(bs, "유방향", V_GDIR, tvv)
         if_match = ctrl_if(bs, c_match, set_d)
@@ -1206,8 +1213,9 @@ def main():
             f.write(svg)
         return m
 
-    bg_md5    = write_svg(BG_SVG)
-    pac_md5   = write_svg(PACMAN_SVG)
+    bg_md5      = write_svg(BG_SVG)
+    pac_md5     = write_svg(PACMAN_OPEN_SVG)
+    pac_cl_md5  = write_svg(PACMAN_CLOSED_SVG)
     gr_md5    = write_svg(GHOST_RED)
     gp_md5    = write_svg(GHOST_PINK)
     gc_md5    = write_svg(GHOST_CYAN)
@@ -1287,11 +1295,14 @@ def main():
         "variables": {}, "lists": {}, "broadcasts": {},
         "blocks": pacman_blocks, "comments": {},
         "currentCostume": 0,
-        "costumes": [{
-            "name": "pac", "bitmapResolution": 1, "dataFormat": "svg",
-            "assetId": pac_md5, "md5ext": f"{pac_md5}.svg",
-            "rotationCenterX": 11, "rotationCenterY": 11
-        }],
+        "costumes": [
+            {"name": "pac_open", "bitmapResolution": 1, "dataFormat": "svg",
+             "assetId": pac_md5, "md5ext": f"{pac_md5}.svg",
+             "rotationCenterX": 11, "rotationCenterY": 11},
+            {"name": "pac_closed", "bitmapResolution": 1, "dataFormat": "svg",
+             "assetId": pac_cl_md5, "md5ext": f"{pac_cl_md5}.svg",
+             "rotationCenterX": 11, "rotationCenterY": 11},
+        ],
         "sounds": [pop_sound()],
         "volume": 100, "layerOrder": 4, "visible": True,
         "x": PAC_START_X, "y": PAC_START_Y, "size": 100, "direction": 90,
@@ -1313,7 +1324,8 @@ def main():
             V_GNC:    ["유nc", 0], V_GNR: ["유nr", 0],
             V_GTC:    ["유목표col", 0], V_GTR: ["유목표row", 0],
             V_GPCT:   ["추격확률", 0], V_GPICK: ["랜덤선택", 0],
-            V_GSEEN:  ["본후보", 0],
+            V_GSEEN:  ["후보거리", 0],
+            V_GSEENC: ["본후보", 0],
         },
         "lists": {}, "broadcasts": {},
         "blocks": ghost_blocks, "comments": {},

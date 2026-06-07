@@ -407,7 +407,8 @@ def build_head_blocks():
             inputs={"KEY_OPTION":[1, km]})
         bs[km]["parent"] = kp
         dir_v = vrep("방향", V_DIR)
-        cnot = cmp_op("operator_not_equals", dir_v, banned_dir)
+        ceq = cmp_op("operator_equals", dir_v, banned_dir)
+        cnot = gen(); bs[cnot] = mk("operator_not", inputs={"OPERAND":[2,ceq]}); bs[ceq]["parent"] = cnot
         cand = bool_op("operator_and", kp, cnot)
         setnd = gen(); bs[setnd] = mk("data_setvariableto",
             inputs={"VALUE": num(dir_val)}, fields={"VARIABLE": ["다음방향", V_NEXTDIR]})

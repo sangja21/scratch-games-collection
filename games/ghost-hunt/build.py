@@ -365,8 +365,8 @@ def build_stage_blocks():
         inputs={"BROADCAST_INPUT": [1, bm_sp]})
     bs[bm_sp]["parent"] = bc_sp
 
-    # wait random 0.7..1.2
-    rand_wt = op("operator_random", 0.7, 1.2, key1="FROM", key2="TO")
+    # wait random 1.0..1.4
+    rand_wt = op("operator_random", 1.0, 1.4, key1="FROM", key2="TO")
     wt_sp = gen(); bs[wt_sp] = mk("control_wait",
         inputs={"DURATION": slot(rand_wt)})
     bs[rand_wt]["parent"] = wt_sp
@@ -485,7 +485,7 @@ def build_flash_blocks():
     front = gen(); bs[front] = mk("looks_gotofrontback",
         fields={"FRONT_BACK": ["front", None]})
     show = gen(); bs[show] = mk("looks_show")
-    wt = gen(); bs[wt] = mk("control_wait", inputs={"DURATION": num(0.12)})
+    wt = gen(); bs[wt] = mk("control_wait", inputs={"DURATION": num(0.15)})
     hi2 = gen(); bs[hi2] = mk("looks_hide")
     delc = gen(); bs[delc] = mk("control_delete_this_clone")
 
@@ -599,6 +599,60 @@ def build_ghost_blocks():
     chain([(ch, bs[ch]), (g_init, bs[g_init]), (swc_a, bs[swc_a]),
            (show, bs[show]), (rep_b, bs[rep_b]),
            (hi_end, bs[hi_end]), (del_end, bs[del_end])])
+
+    # === clone start (always-on touching check — separate hat script) ===
+    # Runs in parallel with the blink loop; catches fast clicks between frames
+    ch2 = gen(); bs[ch2] = mk("control_start_as_clone", top=True, x=400, y=380)
+
+    tm_h2 = gen(); bs[tm_h2] = mk("sensing_touchingobjectmenu",
+        fields={"TOUCHINGOBJECTMENU": ["섬광", None]}, shadow=True)
+    tc_h2 = gen(); bs[tc_h2] = mk("sensing_touchingobject",
+        inputs={"TOUCHINGOBJECTMENU": [1, tm_h2]})
+    bs[tm_h2]["parent"] = tc_h2
+
+    cm_hit2 = gen(); bs[cm_hit2] = mk("looks_costume",
+        fields={"COSTUME": ["ghost_hit", None]}, shadow=True)
+    swc_hit2 = gen(); bs[swc_hit2] = mk("looks_switchcostumeto",
+        inputs={"COSTUME": [1, cm_hit2]})
+    bs[cm_hit2]["parent"] = swc_hit2
+
+    inc_score2 = gen(); bs[inc_score2] = mk("data_changevariableby",
+        inputs={"VALUE": num(10)}, fields={"VARIABLE": ["점수", V_SCORE]})
+
+    pitch_hit2 = gen(); bs[pitch_hit2] = mk("sound_seteffectto",
+        inputs={"VALUE": num(80)}, fields={"EFFECT": ["PITCH", None]})
+    snm_hit2 = gen(); bs[snm_hit2] = mk("sound_sounds_menu",
+        fields={"SOUND_MENU": ["pop", None]}, shadow=True)
+    snd_hit2 = gen(); bs[snd_hit2] = mk("sound_play",
+        inputs={"SOUND_MENU": [1, snm_hit2]})
+    bs[snm_hit2]["parent"] = snd_hit2
+
+    wt_hit2 = gen(); bs[wt_hit2] = mk("control_wait",
+        inputs={"DURATION": num(0.18)})
+    hi_hit2 = gen(); bs[hi_hit2] = mk("looks_hide")
+    del_hit2 = gen(); bs[del_hit2] = mk("control_delete_this_clone")
+
+    chain([(swc_hit2, bs[swc_hit2]), (inc_score2, bs[inc_score2]),
+           (pitch_hit2, bs[pitch_hit2]), (snd_hit2, bs[snd_hit2]),
+           (wt_hit2, bs[wt_hit2]), (hi_hit2, bs[hi_hit2]),
+           (del_hit2, bs[del_hit2])])
+
+    if_hit2 = gen(); bs[if_hit2] = mk("control_if",
+        inputs={"CONDITION": [2, tc_h2], "SUBSTACK": [2, swc_hit2]})
+    bs[tc_h2]["parent"] = if_hit2
+    bs[swc_hit2]["parent"] = if_hit2
+
+    # wait 1 frame between checks
+    wt_poll = gen(); bs[wt_poll] = mk("control_wait",
+        inputs={"DURATION": num(0)})
+
+    chain([(if_hit2, bs[if_hit2]), (wt_poll, bs[wt_poll])])
+
+    forever2 = gen(); bs[forever2] = mk("control_forever",
+        inputs={"SUBSTACK": [2, if_hit2]})
+    bs[if_hit2]["parent"] = forever2
+
+    chain([(ch2, bs[ch2]), (forever2, bs[forever2])])
 
     return bs
 

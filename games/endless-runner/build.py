@@ -33,7 +33,7 @@ BG_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="480" height="360" vie
   <rect x="0" y="290" width="480" height="6" fill="#B0844F"/>
 </svg>"""
 
-# -------- Runner (60x80) — friendly pixel-like character --------
+# -------- Runner (60x80) — friendly pixel-like character, frame 1 (left leg forward) --------
 RUNNER_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="60" height="80" viewBox="0 0 60 80">
   <!-- head -->
   <circle cx="30" cy="14" r="11" fill="#FFE0B2" stroke="#5D4037" stroke-width="1.6"/>
@@ -45,19 +45,46 @@ RUNNER_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="60" height="80" v
   <path d="M30,18 Q34,21 37,18" stroke="#5D4037" stroke-width="1.2" fill="none"/>
   <!-- body (red shirt) -->
   <rect x="18" y="24" width="24" height="26" rx="6" fill="#E53935" stroke="#B71C1C" stroke-width="1.6"/>
-  <!-- arm front (swinging) -->
+  <!-- arm front (swinging forward) -->
   <rect x="38" y="28" width="8" height="20" rx="4" fill="#FFE0B2" stroke="#5D4037" stroke-width="1.4"/>
   <!-- arm back -->
   <rect x="14" y="30" width="8" height="18" rx="4" fill="#FFE0B2" stroke="#5D4037" stroke-width="1.4"/>
   <!-- shorts (blue) -->
   <rect x="20" y="48" width="20" height="10" fill="#1E88E5" stroke="#0D47A1" stroke-width="1.4"/>
-  <!-- leg front -->
-  <rect x="20" y="58" width="8" height="16" rx="3" fill="#FFE0B2" stroke="#5D4037" stroke-width="1.4"/>
-  <!-- leg back -->
-  <rect x="32" y="58" width="8" height="14" rx="3" fill="#FFE0B2" stroke="#5D4037" stroke-width="1.4"/>
+  <!-- leg front (left leg forward) -->
+  <rect x="18" y="58" width="8" height="18" rx="3" fill="#FFE0B2" stroke="#5D4037" stroke-width="1.4"/>
+  <!-- leg back (right leg back) -->
+  <rect x="34" y="56" width="8" height="12" rx="3" fill="#FFE0B2" stroke="#5D4037" stroke-width="1.4"/>
   <!-- shoes -->
-  <ellipse cx="24" cy="76" rx="6" ry="2.4" fill="#212121"/>
-  <ellipse cx="36" cy="74" rx="6" ry="2.4" fill="#212121"/>
+  <ellipse cx="22" cy="77" rx="6" ry="2.4" fill="#212121"/>
+  <ellipse cx="38" cy="69" rx="6" ry="2.4" fill="#212121"/>
+</svg>"""
+
+# -------- Runner frame 2 (right leg forward) — alternate running pose --------
+RUNNER_RUN_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="60" height="80" viewBox="0 0 60 80">
+  <!-- head -->
+  <circle cx="30" cy="14" r="11" fill="#FFE0B2" stroke="#5D4037" stroke-width="1.6"/>
+  <!-- hair cap -->
+  <path d="M19,12 Q30,0 41,12 Q41,8 30,4 Q19,8 19,12 Z" fill="#5D4037"/>
+  <!-- eye -->
+  <circle cx="34" cy="14" r="1.6" fill="#212121"/>
+  <!-- smile -->
+  <path d="M30,18 Q34,21 37,18" stroke="#5D4037" stroke-width="1.2" fill="none"/>
+  <!-- body (red shirt) -->
+  <rect x="18" y="24" width="24" height="26" rx="6" fill="#E53935" stroke="#B71C1C" stroke-width="1.6"/>
+  <!-- arm front (swinging back) -->
+  <rect x="38" y="32" width="8" height="18" rx="4" fill="#FFE0B2" stroke="#5D4037" stroke-width="1.4"/>
+  <!-- arm back (swinging forward) -->
+  <rect x="14" y="26" width="8" height="22" rx="4" fill="#FFE0B2" stroke="#5D4037" stroke-width="1.4"/>
+  <!-- shorts (blue) -->
+  <rect x="20" y="48" width="20" height="10" fill="#1E88E5" stroke="#0D47A1" stroke-width="1.4"/>
+  <!-- leg front (right leg forward) -->
+  <rect x="34" y="58" width="8" height="18" rx="3" fill="#FFE0B2" stroke="#5D4037" stroke-width="1.4"/>
+  <!-- leg back (left leg back) -->
+  <rect x="18" y="56" width="8" height="12" rx="3" fill="#FFE0B2" stroke="#5D4037" stroke-width="1.4"/>
+  <!-- shoes -->
+  <ellipse cx="38" cy="77" rx="6" ry="2.4" fill="#212121"/>
+  <ellipse cx="22" cy="69" rx="6" ry="2.4" fill="#212121"/>
 </svg>"""
 
 # -------- Cactus (50x60) — ground obstacle --------
@@ -221,6 +248,10 @@ def build_stage_blocks():
 
     # === when flag clicked: init vars + broadcast 게임시작 ===
     h = gen(); bs[h] = mk("event_whenflagclicked", top=True, x=20, y=20)
+    st_snd_stop = gen(); bs[st_snd_stop] = mk("sound_stopallsounds")
+    st_snd_clr = gen(); bs[st_snd_clr] = mk("sound_cleareffects")
+    st_looks_clr = gen(); bs[st_looks_clr] = mk("looks_cleargraphiceffects")
+    st_vol = gen(); bs[st_vol] = mk("sound_setvolumeto", inputs={"VOLUME": num(100)})
     s_score = gen(); bs[s_score] = mk("data_setvariableto",
         inputs={"VALUE": num(0)}, fields={"VARIABLE": ["점수", V_SCORE]})
     s_state = gen(); bs[s_state] = mk("data_setvariableto",
@@ -242,9 +273,14 @@ def build_stage_blocks():
         inputs={"BROADCAST_INPUT": [1, bm_start]})
     bs[bm_start]["parent"] = bc_start
 
-    chain([(h,bs[h]),(s_score,bs[s_score]),(s_state,bs[s_state]),(s_vy,bs[s_vy]),
+    # brief wait so all "when flag clicked" handlers in other sprites can run first
+    wt_init = gen(); bs[wt_init] = mk("control_wait", inputs={"DURATION": num(0)})
+
+    chain([(h,bs[h]),(st_snd_stop,bs[st_snd_stop]),(st_snd_clr,bs[st_snd_clr]),
+           (st_looks_clr,bs[st_looks_clr]),(st_vol,bs[st_vol]),
+           (s_score,bs[s_score]),(s_state,bs[s_state]),(s_vy,bs[s_vy]),
            (s_scroll,bs[s_scroll]),(s_spawn,bs[s_spawn]),(s_prev,bs[s_prev]),
-           (s_kind,bs[s_kind]),(bc_start,bs[bc_start])])
+           (s_kind,bs[s_kind]),(wt_init,bs[wt_init]),(bc_start,bs[bc_start])])
 
     # === when receive 게임시작 — forever 1: 장애물 스폰 ===
     h2 = gen(); bs[h2] = mk("event_whenbroadcastreceived", top=True, x=20, y=320,
@@ -297,7 +333,10 @@ def build_stage_blocks():
     bs[cond_over_a]["parent"] = rep_until_a
     bs[set_kind]["parent"] = rep_until_a
 
-    chain([(h2,bs[h2]),(rep_until_a,bs[rep_until_a])])
+    # initial grace period: wait 1.5 before first obstacle
+    wt_grace = gen(); bs[wt_grace] = mk("control_wait", inputs={"DURATION": num(1.5)})
+
+    chain([(h2,bs[h2]),(wt_grace,bs[wt_grace]),(rep_until_a,bs[rep_until_a])])
 
     # === when receive 게임시작 — forever 2: 점수 누적 + 가속 ===
     h3 = gen(); bs[h3] = mk("event_whenbroadcastreceived", top=True, x=320, y=320,
@@ -356,17 +395,32 @@ def build_runner_blocks():
 
     # === when flag clicked: init pos + show ===
     h = gen(); bs[h] = mk("event_whenflagclicked", top=True, x=20, y=20)
+    snd_clr = gen(); bs[snd_clr] = mk("sound_cleareffects")
+    snd_stop = gen(); bs[snd_stop] = mk("sound_stopallsounds")
+    looks_clr = gen(); bs[looks_clr] = mk("looks_cleargraphiceffects")
     g = gen(); bs[g] = mk("motion_gotoxy",
         inputs={"X": num(-150), "Y": num(-130)})
     sz = gen(); bs[sz] = mk("looks_setsizeto", inputs={"SIZE": num(80)})
     pdir = gen(); bs[pdir] = mk("motion_pointindirection", inputs={"DIRECTION": num(90)})
+    # switch to frame 1 on flag click
+    cm_init = gen(); bs[cm_init] = mk("looks_switchcostumeto",
+        inputs={"COSTUME": [1, gen()]})
+    cm_init_menu = bs[cm_init]["inputs"]["COSTUME"][1]
+    bs[cm_init_menu] = mk("looks_costume",
+        fields={"COSTUME": ["runner", None]}, shadow=True, parent=cm_init)
     sh = gen(); bs[sh] = mk("looks_show")
-    chain([(h,bs[h]),(g,bs[g]),(sz,bs[sz]),(pdir,bs[pdir]),(sh,bs[sh])])
+    vol = gen(); bs[vol] = mk("sound_setvolumeto", inputs={"VOLUME": num(100)})
+    chain([(h,bs[h]),(snd_clr,bs[snd_clr]),(snd_stop,bs[snd_stop]),(looks_clr,bs[looks_clr]),
+           (vol,bs[vol]),
+           (g,bs[g]),(sz,bs[sz]),(pdir,bs[pdir]),(cm_init,bs[cm_init]),(sh,bs[sh])])
 
     # === when receive 게임시작: input + physics + collision loop ===
     h2 = gen(); bs[h2] = mk("event_whenbroadcastreceived", top=True, x=20, y=200,
         fields={"BROADCAST_OPTION": ["게임시작", BR_START]})
 
+    sh2 = gen(); bs[sh2] = mk("looks_show")
+    looks_clr2 = gen(); bs[looks_clr2] = mk("looks_cleargraphiceffects")
+    vol2 = gen(); bs[vol2] = mk("sound_setvolumeto", inputs={"VOLUME": num(100)})
     reset_vy = gen(); bs[reset_vy] = mk("data_setvariableto",
         inputs={"VALUE": num(0)}, fields={"VARIABLE": ["VY", V_VY]})
     reset_prev = gen(); bs[reset_prev] = mk("data_setvariableto",
@@ -448,6 +502,29 @@ def build_runner_blocks():
     bs[cond_floor]["parent"] = if_floor
     bs[g_floor]["parent"] = if_floor
 
+    # --- running animation: if on floor (y < -129) → next costume, else → costume "runner" ---
+    # y = -130 on floor; jumping raises y above -130.
+    # operator_lt(y_position, -129) is TRUE only when y <= -130 (on ground).
+    yp_anim = gen(); bs[yp_anim] = mk("motion_yposition")
+    cond_on_floor_anim = cmp_op("operator_lt", yp_anim, -129)
+    bs[yp_anim]["parent"] = cond_on_floor_anim
+
+    next_cos = gen(); bs[next_cos] = mk("looks_nextcostume")
+
+    cm_run = gen(); bs[cm_run] = mk("looks_switchcostumeto",
+        inputs={"COSTUME": [1, gen()]})
+    run_menu_id = bs[cm_run]["inputs"]["COSTUME"][1]
+    bs[run_menu_id] = mk("looks_costume",
+        fields={"COSTUME": ["runner", None]}, shadow=True, parent=cm_run)
+
+    if_else_anim = gen(); bs[if_else_anim] = mk("control_if_else",
+        inputs={"CONDITION": [2, cond_on_floor_anim],
+                "SUBSTACK":  [2, next_cos],
+                "SUBSTACK2": [2, cm_run]})
+    bs[cond_on_floor_anim]["parent"] = if_else_anim
+    bs[next_cos]["parent"] = if_else_anim
+    bs[cm_run]["parent"] = if_else_anim
+
     # --- slide size: if (key down arrow pressed) → size 40 else size 80 ---
     k_down = key_pressed("down arrow")
     set_size_small = gen(); bs[set_size_small] = mk("looks_setsizeto",
@@ -506,6 +583,7 @@ def build_runner_blocks():
 
     chain([(if_jump,bs[if_jump]),(if_else_prev,bs[if_else_prev]),
            (grav,bs[grav]),(chy,bs[chy]),(if_floor,bs[if_floor]),
+           (if_else_anim,bs[if_else_anim]),
            (if_else_slide,bs[if_else_slide]),
            (if_cact,bs[if_cact]),(if_bat,bs[if_bat]),
            (if_best,bs[if_best]),(wt,bs[wt])])
@@ -515,8 +593,19 @@ def build_runner_blocks():
     bs[cond_over]["parent"] = rep_until
     bs[if_jump]["parent"] = rep_until
 
-    chain([(h2,bs[h2]),(reset_vy,bs[reset_vy]),(reset_prev,bs[reset_prev]),
-           (g0,bs[g0]),(sz0,bs[sz0]),(rep_until,bs[rep_until])])
+    # reset costume to frame 1 on each game start
+    cm_reset = gen(); bs[cm_reset] = mk("looks_switchcostumeto",
+        inputs={"COSTUME": [1, gen()]})
+    cm_reset_menu = bs[cm_reset]["inputs"]["COSTUME"][1]
+    bs[cm_reset_menu] = mk("looks_costume",
+        fields={"COSTUME": ["runner", None]}, shadow=True, parent=cm_reset)
+
+    hi2 = gen(); bs[hi2] = mk("looks_hide")
+
+    chain([(h2,bs[h2]),(sh2,bs[sh2]),(looks_clr2,bs[looks_clr2]),(vol2,bs[vol2]),
+           (reset_vy,bs[reset_vy]),(reset_prev,bs[reset_prev]),
+           (g0,bs[g0]),(sz0,bs[sz0]),(cm_reset,bs[cm_reset]),(rep_until,bs[rep_until]),
+           (hi2,bs[hi2])])
 
     # === when flag clicked: play pop on game over ===
     h3 = gen(); bs[h3] = mk("event_whenflagclicked", top=True, x=400, y=20)
@@ -547,14 +636,22 @@ def build_cactus_blocks():
     h = gen(); bs[h] = mk("event_whenflagclicked", top=True, x=20, y=20)
     hi = gen(); bs[hi] = mk("looks_hide")
     sz = gen(); bs[sz] = mk("looks_setsizeto", inputs={"SIZE": num(80)})
-    chain([(h,bs[h]),(hi,bs[hi]),(sz,bs[sz])])
+    clr_fx = gen(); bs[clr_fx] = mk("looks_cleargraphiceffects")
+    clr_snd = gen(); bs[clr_snd] = mk("sound_cleareffects")
+    g_init = gen(); bs[g_init] = mk("motion_gotoxy",
+        inputs={"X": num(300), "Y": num(-125)})
+    pdir_init = gen(); bs[pdir_init] = mk("motion_pointindirection",
+        inputs={"DIRECTION": num(90)})
+    chain([(h,bs[h]),(hi,bs[hi]),(sz,bs[sz]),(clr_fx,bs[clr_fx]),(clr_snd,bs[clr_snd]),
+           (g_init,bs[g_init]),(pdir_init,bs[pdir_init])])
 
-    # === when receive 선인장스폰: goto + costume + clone ===
+    # === when receive 선인장스폰: goto + size + costume + clone ===
     h2 = gen(); bs[h2] = mk("event_whenbroadcastreceived", top=True, x=20, y=200,
         fields={"BROADCAST_OPTION": ["선인장스폰", BR_SPAWN_CACTUS]})
 
     g = gen(); bs[g] = mk("motion_gotoxy",
         inputs={"X": num(260), "Y": num(-125)})
+    sz_sp = gen(); bs[sz_sp] = mk("looks_setsizeto", inputs={"SIZE": num(80)})
 
     cm = gen(); bs[cm] = mk("looks_switchcostumeto",
         inputs={"COSTUME":[1, gen()]})
@@ -568,10 +665,17 @@ def build_cactus_blocks():
         inputs={"CLONE_OPTION":[1, cmenu]})
     bs[cmenu]["parent"] = cclone
 
-    chain([(h2,bs[h2]),(g,bs[g]),(cm,bs[cm]),(cclone,bs[cclone])])
+    chain([(h2,bs[h2]),(g,bs[g]),(sz_sp,bs[sz_sp]),(cm,bs[cm]),(cclone,bs[cclone])])
 
     # === when I start as clone ===
     ch = gen(); bs[ch] = mk("control_start_as_clone", top=True, x=400, y=200)
+    # ensure position, size, direction, effects at clone start
+    cl_g = gen(); bs[cl_g] = mk("motion_gotoxy",
+        inputs={"X": num(260), "Y": num(-125)})
+    cl_sz = gen(); bs[cl_sz] = mk("looks_setsizeto", inputs={"SIZE": num(80)})
+    cl_dir = gen(); bs[cl_dir] = mk("motion_pointindirection",
+        inputs={"DIRECTION": num(90)})
+    cl_clr = gen(); bs[cl_clr] = mk("looks_cleargraphiceffects")
     show = gen(); bs[show] = mk("looks_show")
 
     state_v = vrep("게임상태", V_STATE)
@@ -602,7 +706,8 @@ def build_cactus_blocks():
     bs[chx]["parent"] = rep_until
 
     del_end = gen(); bs[del_end] = mk("control_delete_this_clone")
-    chain([(ch,bs[ch]),(show,bs[show]),(rep_until,bs[rep_until]),(del_end,bs[del_end])])
+    chain([(ch,bs[ch]),(cl_g,bs[cl_g]),(cl_sz,bs[cl_sz]),(cl_dir,bs[cl_dir]),
+           (cl_clr,bs[cl_clr]),(show,bs[show]),(rep_until,bs[rep_until]),(del_end,bs[del_end])])
 
     return bs
 
@@ -616,14 +721,22 @@ def build_bat_blocks():
     h = gen(); bs[h] = mk("event_whenflagclicked", top=True, x=20, y=20)
     hi = gen(); bs[hi] = mk("looks_hide")
     sz = gen(); bs[sz] = mk("looks_setsizeto", inputs={"SIZE": num(80)})
-    chain([(h,bs[h]),(hi,bs[hi]),(sz,bs[sz])])
+    clr_fx = gen(); bs[clr_fx] = mk("looks_cleargraphiceffects")
+    clr_snd = gen(); bs[clr_snd] = mk("sound_cleareffects")
+    g_init = gen(); bs[g_init] = mk("motion_gotoxy",
+        inputs={"X": num(300), "Y": num(-90)})
+    pdir_init = gen(); bs[pdir_init] = mk("motion_pointindirection",
+        inputs={"DIRECTION": num(90)})
+    chain([(h,bs[h]),(hi,bs[hi]),(sz,bs[sz]),(clr_fx,bs[clr_fx]),(clr_snd,bs[clr_snd]),
+           (g_init,bs[g_init]),(pdir_init,bs[pdir_init])])
 
-    # === when receive 박쥐스폰: goto + costume + clone ===
+    # === when receive 박쥐스폰: goto + size + costume + clone ===
     h2 = gen(); bs[h2] = mk("event_whenbroadcastreceived", top=True, x=20, y=200,
         fields={"BROADCAST_OPTION": ["박쥐스폰", BR_SPAWN_BAT]})
 
     g = gen(); bs[g] = mk("motion_gotoxy",
         inputs={"X": num(260), "Y": num(-90)})
+    sz_sp = gen(); bs[sz_sp] = mk("looks_setsizeto", inputs={"SIZE": num(80)})
 
     cm = gen(); bs[cm] = mk("looks_switchcostumeto",
         inputs={"COSTUME":[1, gen()]})
@@ -637,10 +750,17 @@ def build_bat_blocks():
         inputs={"CLONE_OPTION":[1, cmenu]})
     bs[cmenu]["parent"] = cclone
 
-    chain([(h2,bs[h2]),(g,bs[g]),(cm,bs[cm]),(cclone,bs[cclone])])
+    chain([(h2,bs[h2]),(g,bs[g]),(sz_sp,bs[sz_sp]),(cm,bs[cm]),(cclone,bs[cclone])])
 
     # === when I start as clone ===
     ch = gen(); bs[ch] = mk("control_start_as_clone", top=True, x=400, y=200)
+    # ensure position, size, direction at clone start
+    cl_g = gen(); bs[cl_g] = mk("motion_gotoxy",
+        inputs={"X": num(260), "Y": num(-90)})
+    cl_sz = gen(); bs[cl_sz] = mk("looks_setsizeto", inputs={"SIZE": num(80)})
+    cl_dir = gen(); bs[cl_dir] = mk("motion_pointindirection",
+        inputs={"DIRECTION": num(90)})
+    cl_clr = gen(); bs[cl_clr] = mk("looks_cleargraphiceffects")
     show = gen(); bs[show] = mk("looks_show")
 
     state_v = vrep("게임상태", V_STATE)
@@ -671,7 +791,8 @@ def build_bat_blocks():
     bs[chx]["parent"] = rep_until
 
     del_end = gen(); bs[del_end] = mk("control_delete_this_clone")
-    chain([(ch,bs[ch]),(show,bs[show]),(rep_until,bs[rep_until]),(del_end,bs[del_end])])
+    chain([(ch,bs[ch]),(cl_g,bs[cl_g]),(cl_sz,bs[cl_sz]),(cl_dir,bs[cl_dir]),
+           (cl_clr,bs[cl_clr]),(show,bs[show]),(rep_until,bs[rep_until]),(del_end,bs[del_end])])
 
     return bs
 
@@ -682,8 +803,13 @@ def build_ground_blocks():
     bs = {}
     h = gen(); bs[h] = mk("event_whenflagclicked", top=True, x=20, y=20)
     g = gen(); bs[g] = mk("motion_gotoxy", inputs={"X": num(0), "Y": num(-150)})
+    sz = gen(); bs[sz] = mk("looks_setsizeto", inputs={"SIZE": num(100)})
+    pdir = gen(); bs[pdir] = mk("motion_pointindirection", inputs={"DIRECTION": num(90)})
+    clr = gen(); bs[clr] = mk("looks_cleargraphiceffects")
+    snd_clr = gen(); bs[snd_clr] = mk("sound_cleareffects")
     sh = gen(); bs[sh] = mk("looks_show")
-    chain([(h,bs[h]),(g,bs[g]),(sh,bs[sh])])
+    chain([(h,bs[h]),(g,bs[g]),(sz,bs[sz]),(pdir,bs[pdir]),
+           (clr,bs[clr]),(snd_clr,bs[snd_clr]),(sh,bs[sh])])
     return bs
 
 # ============================================================
@@ -695,6 +821,8 @@ def build_gameover_blocks():
 
     h = gen(); bs[h] = mk("event_whenflagclicked", top=True, x=20, y=20)
     hi = gen(); bs[hi] = mk("looks_hide")
+    clr_go = gen(); bs[clr_go] = mk("looks_cleargraphiceffects")
+    snd_clr_go = gen(); bs[snd_clr_go] = mk("sound_cleareffects")
     g = gen(); bs[g] = mk("motion_gotoxy", inputs={"X": num(0), "Y": num(0)})
     sz = gen(); bs[sz] = mk("looks_setsizeto", inputs={"SIZE": num(100)})
     front = gen(); bs[front] = mk("looks_gotofrontback",
@@ -712,10 +840,16 @@ def build_gameover_blocks():
         inputs={"CONDITION":[2, cond_zero]})
     bs[cond_zero]["parent"] = wait_over
 
+    # ensure at center and front when showing
+    g2 = gen(); bs[g2] = mk("motion_gotoxy", inputs={"X": num(0), "Y": num(0)})
+    front2 = gen(); bs[front2] = mk("looks_gotofrontback",
+        fields={"FRONT_BACK": ["front", None]})
     show = gen(); bs[show] = mk("looks_show")
 
-    chain([(h,bs[h]),(hi,bs[hi]),(g,bs[g]),(sz,bs[sz]),(front,bs[front]),
-           (wait_start,bs[wait_start]),(wait_over,bs[wait_over]),(show,bs[show])])
+    chain([(h,bs[h]),(hi,bs[hi]),(clr_go,bs[clr_go]),(snd_clr_go,bs[snd_clr_go]),
+           (g,bs[g]),(sz,bs[sz]),(front,bs[front]),
+           (wait_start,bs[wait_start]),(wait_over,bs[wait_over]),
+           (g2,bs[g2]),(front2,bs[front2]),(show,bs[show])])
     return bs
 
 # ============================================================
@@ -732,6 +866,10 @@ def main():
     run_md5 = md5_bytes(RUNNER_SVG.encode("utf-8"))
     with open(f"{WORK}/{run_md5}.svg", "w", encoding="utf-8") as f:
         f.write(RUNNER_SVG)
+
+    run2_md5 = md5_bytes(RUNNER_RUN_SVG.encode("utf-8"))
+    with open(f"{WORK}/{run2_md5}.svg", "w", encoding="utf-8") as f:
+        f.write(RUNNER_RUN_SVG)
 
     cact_md5 = md5_bytes(CACTUS_SVG.encode("utf-8"))
     with open(f"{WORK}/{cact_md5}.svg", "w", encoding="utf-8") as f:
@@ -851,11 +989,18 @@ def main():
         "variables": {}, "lists": {}, "broadcasts": {},
         "blocks": runner_blocks, "comments": {},
         "currentCostume": 0,
-        "costumes": [{
-            "name": "runner", "bitmapResolution": 1, "dataFormat": "svg",
-            "assetId": run_md5, "md5ext": f"{run_md5}.svg",
-            "rotationCenterX": 30, "rotationCenterY": 40
-        }],
+        "costumes": [
+            {
+                "name": "runner", "bitmapResolution": 1, "dataFormat": "svg",
+                "assetId": run_md5, "md5ext": f"{run_md5}.svg",
+                "rotationCenterX": 30, "rotationCenterY": 40
+            },
+            {
+                "name": "runner-run", "bitmapResolution": 1, "dataFormat": "svg",
+                "assetId": run2_md5, "md5ext": f"{run2_md5}.svg",
+                "rotationCenterX": 30, "rotationCenterY": 40
+            }
+        ],
         "sounds": [pop_sound()],
         "volume": 100, "layerOrder": 4, "visible": True,
         "x": -150, "y": -130, "size": 80, "direction": 90,

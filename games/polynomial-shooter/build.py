@@ -97,6 +97,9 @@ V_PREV_X = "varPrevX007"   # local to curve preview sprite
 V_EQ     = "varEq008"      # equation string
 BR_NEW   = "brNew001"
 BR_START = "brStart002"
+BR_OVER  = "brOver003"     # game-over broadcast
+
+MAX_ROUNDS = 5             # game ends after this many rounds
 
 # Tiny transparent costume for the (hidden) preview sprite
 TINY_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 8 8"><rect width="8" height="8" fill="none"/></svg>"""
@@ -236,10 +239,27 @@ def build_rocket_blocks():
     bs[cond]["parent"] = ifb
     bs[hide_in]["parent"] = ifb
 
+    # if x position > 230 then hide + stop (right-edge boundary)
+    xp = gen(); bs[xp] = mk("motion_xposition")
+    xcond = gen(); bs[xcond] = mk("operator_gt",
+        inputs={"OPERAND1": slot(xp), "OPERAND2": num(230)})
+    bs[xp]["parent"] = xcond
+
+    xhide = gen(); bs[xhide] = mk("looks_hide")
+    xstop = gen(); bs[xstop] = mk("control_stop",
+        fields={"STOP_OPTION": ["this script", None]})
+    bs[xstop]["mutation"] = {"tagName":"mutation","children":[],"hasnext":"false"}
+    chain([(xhide,bs[xhide]),(xstop,bs[xstop])])
+
+    xifb = gen(); bs[xifb] = mk("control_if",
+        inputs={"CONDITION":[2,xcond], "SUBSTACK":[2,xhide]})
+    bs[xcond]["parent"] = xifb
+    bs[xhide]["parent"] = xifb
+
     wt = gen(); bs[wt] = mk("control_wait", inputs={"DURATION": num(0.025)})
 
-    # body order: change_x → goto → point_dir → if_off_screen → wait
-    chain([(cx,bs[cx]),(gi,bs[gi]),(pid,bs[pid]),(ifb,bs[ifb]),(wt,bs[wt])])
+    # body order: change_x → goto → point_dir → if_below_screen → if_right_of_screen → wait
+    chain([(cx,bs[cx]),(gi,bs[gi]),(pid,bs[pid]),(ifb,bs[ifb]),(xifb,bs[xifb]),(wt,bs[wt])])
 
     # repeat 70
     rep = gen(); bs[rep] = mk("control_repeat",
@@ -249,10 +269,7 @@ def build_rocket_blocks():
     # after repeat: hide
     end_hide = gen(); bs[end_hide] = mk("looks_hide")
 
-    chain([(sp,bs[sp]),(so,bs[so]),(sg,bs[sg]),(pdir_init := pdir,bs[pdir]) if False else (sg,bs[sg]),
-           (sxs,bs[sxs]),(sho,bs[sho]),(snd0,bs[snd0]),(rep,bs[rep]),(end_hide,bs[end_hide])])
-    # ^ messy, let me re-chain properly:
-    # Reset chain for space sequence
+    # Chain space-key launch sequence explicitly
     bs[sp]["next"] = so;  bs[so]["parent"] = sp
     bs[so]["next"] = sg;  bs[sg]["parent"] = so
     bs[sg]["next"] = sxs; bs[sxs]["parent"]= sg
@@ -261,6 +278,35 @@ def build_rocket_blocks():
     bs[snd0]["next"]= rep;bs[rep]["parent"]= snd0
     bs[rep]["next"]= end_hide; bs[end_hide]["parent"]= rep
     bs[end_hide]["next"]= None
+
+    # === when received 게임끝: show final score then stop all ===
+    goh = gen(); bs[goh] = mk("event_whenbroadcastreceived", top=True, x=700, y=20,
+        fields={"BROADCAST_OPTION": ["게임끝", BR_OVER]})
+    go_stop_other = gen(); bs[go_stop_other] = mk("control_stop",
+        fields={"STOP_OPTION": ["other scripts in sprite", None]})
+    bs[go_stop_other]["mutation"] = {"tagName":"mutation","children":[],"hasnext":"true"}
+    go_show = gen(); bs[go_show] = mk("looks_show")
+    go_goto = gen(); bs[go_goto] = mk("motion_gotoxy",
+        inputs={"X": num(0), "Y": num(0)})
+
+    # build score label: "게임 끝! 점수: " + 점수
+    rv_score = vrep("점수", V_SCORE)
+    j_a = gen(); bs[j_a] = mk("operator_join",
+        inputs={"STRING1": text_lit("게임 끝!  점수: "),
+                "STRING2": slot(rv_score, sk=10, sv="")})
+    bs[rv_score]["parent"] = j_a
+
+    go_say = gen(); bs[go_say] = mk("looks_sayforsecs",
+        inputs={"MESSAGE": slot(j_a, sk=10, sv=""), "SECS": num(5)})
+    bs[j_a]["parent"] = go_say
+
+    go_stop_all = gen(); bs[go_stop_all] = mk("control_stop",
+        fields={"STOP_OPTION": ["all", None]})
+    bs[go_stop_all]["mutation"] = {"tagName":"mutation","children":[],"hasnext":"false"}
+
+    chain([(goh,bs[goh]),(go_stop_other,bs[go_stop_other]),(go_show,bs[go_show]),
+           (go_goto,bs[go_goto]),(go_say,bs[go_say]),(go_stop_all,bs[go_stop_all])])
+
     return bs
 
 # ---------- BALLOON sprite blocks ----------
@@ -349,19 +395,44 @@ def build_balloon_blocks():
     decb = gen(); bs[decb] = mk("data_changevariableby",
         inputs={"VALUE": num(-1)}, fields={"VARIABLE": ["풍선수", V_BCOUNT]})
 
-    # if 풍선수 = 0 then increment 라운드 + broadcast 새라운드
+    # if 풍선수 = 0 then increment 라운드, then either game-over or next round
     rb = vrep("풍선수", V_BCOUNT)
     eq = gen(); bs[eq] = mk("operator_equals",
         inputs={"OPERAND1": slot(rb), "OPERAND2": num(0)})
     bs[rb]["parent"] = eq
     incr = gen(); bs[incr] = mk("data_changevariableby",
         inputs={"VALUE": num(1)}, fields={"VARIABLE": ["라운드", V_ROUND]})
+
+    # game-over branch: broadcast 게임끝
+    obm = gen(); bs[obm] = mk("event_broadcast_menu",
+        fields={"BROADCAST_OPTION": ["게임끝", BR_OVER]}, shadow=True)
+    obb = gen(); bs[obb] = mk("event_broadcast",
+        inputs={"BROADCAST_INPUT":[1,obm]})
+    bs[obm]["parent"] = obb
+
+    # next-round branch: broadcast 새라운드
     nbm2 = gen(); bs[nbm2] = mk("event_broadcast_menu",
         fields={"BROADCAST_OPTION": ["새라운드", BR_NEW]}, shadow=True)
     nbb2 = gen(); bs[nbb2] = mk("event_broadcast",
         inputs={"BROADCAST_INPUT":[1,nbm2]})
     bs[nbm2]["parent"] = nbb2
-    chain([(incr,bs[incr]),(nbb2,bs[nbb2])])
+
+    # condition: 라운드 > MAX_ROUNDS
+    rr = vrep("라운드", V_ROUND)
+    rover = gen(); bs[rover] = mk("operator_gt",
+        inputs={"OPERAND1": slot(rr), "OPERAND2": num(MAX_ROUNDS)})
+    bs[rr]["parent"] = rover
+
+    # if/else: over → game-over broadcast, else → new round broadcast
+    if_over = gen(); bs[if_over] = mk("control_if_else",
+        inputs={"CONDITION": [2, rover],
+                "SUBSTACK":  [2, obb],
+                "SUBSTACK2": [2, nbb2]})
+    bs[rover]["parent"] = if_over
+    bs[obb]["parent"] = if_over
+    bs[nbb2]["parent"] = if_over
+
+    chain([(incr,bs[incr]),(if_over,bs[if_over])])
 
     if_round = gen(); bs[if_round] = mk("control_if",
         inputs={"CONDITION":[2,eq], "SUBSTACK":[2,incr]})
@@ -599,7 +670,7 @@ def main():
             V_ROUND:  ["라운드", 1],
             V_EQ:     ["수식", "y = a·x² + b·x"],
         },
-        "lists": {}, "broadcasts": {BR_NEW: "새라운드", BR_START: "게임시작"},
+        "lists": {}, "broadcasts": {BR_NEW: "새라운드", BR_START: "게임시작", BR_OVER: "게임끝"},
         "blocks": {}, "comments": {},
         "currentCostume": 0,
         "costumes": [{

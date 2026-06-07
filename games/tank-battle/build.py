@@ -203,12 +203,12 @@ V_BKIND = "varBKind12"
 V_INV   = "varInv13"
 V_CD    = "varCD14"
 
-BR_START  = "brStart01"
-BR_ROUND  = "brRound02"
-BR_ESPAWN = "brESpawn03"
-BR_COVER  = "brCover04"
-BR_FIRE   = "brFire05"
-BR_EFIRE  = "brEFire06"
+BR_START   = "brStart01"
+BR_ROUND   = "brRound02"
+BR_ESPAWN  = "brESpawn03"
+BR_COVER   = "brCover04"
+BR_EFIRE   = "brEFire06"
+BR_CLRCOV  = "brClrCov07"
 
 def make_helpers(bs):
     def vrep(name, vid):
@@ -308,6 +308,15 @@ def build_stage_blocks():
     bs[set_eleft_a]["parent"] = if_eleft
     bs[set_eleft_b]["parent"] = if_eleft
 
+    # --- Broadcast 엄폐물제거 first to clear existing cover clones before spawning new ones ---
+    bm_clrcov = gen(); bs[bm_clrcov] = mk("event_broadcast_menu",
+        fields={"BROADCAST_OPTION": ["엄폐물제거", BR_CLRCOV]}, shadow=True)
+    bc_clrcov = gen(); bs[bc_clrcov] = mk("event_broadcast",
+        inputs={"BROADCAST_INPUT": [1, bm_clrcov]})
+    bs[bm_clrcov]["parent"] = bc_clrcov
+    w_clrcov = gen(); bs[w_clrcov] = mk("control_wait", inputs={"DURATION": num(0.05)})
+    chain([(bc_clrcov, bs[bc_clrcov]), (w_clrcov, bs[w_clrcov])])
+
     # --- Cover spawn loop: repeat 5 ---
     # body: SX=random(-200..200), SY=random(-140..140) gated abs(SY)>25 via simple second random pick
     sx_calc = gen(); bs[sx_calc] = mk("operator_random",
@@ -391,6 +400,7 @@ def build_stage_blocks():
     bs[e_set_sx]["parent"] = rep_e
 
     chain([(h3, bs[h3]), (if_eleft, bs[if_eleft]),
+           (bc_clrcov, bs[bc_clrcov]),
            (rep_cov, bs[rep_cov]), (rep_e, bs[rep_e])])
 
     # --- forever counter (무적/쿨다운 decrement) ---
@@ -423,14 +433,27 @@ def build_stage_blocks():
 
     chain([(h4, bs[h4]), (fe_ctr, bs[fe_ctr])])
 
-    # --- forever round watcher: 잔여적=0 AND 게임상태=1 → next round ---
+    # --- round watcher: wait until 잔여적>0 → wait until 잔여적=0 AND 게임상태=1 → next round
+    # This pattern avoids the race condition where 잔여적=0 at flag-click fires the watcher
+    # before the first round's enemies have been spawned.
     h5 = gen(); bs[h5] = mk("event_whenflagclicked", top=True, x=400, y=400)
 
+    # wait until 잔여적 > 0  (확인: 적이 실제로 스폰될 때까지 대기)
+    eleft_pos1 = vrep("잔여적", V_ELEFT)
+    cond_epos = cmp_op("operator_gt", eleft_pos1, 0)
+    wu_epos = gen(); bs[wu_epos] = mk("control_wait_until",
+        inputs={"CONDITION": [2, cond_epos]})
+    bs[cond_epos]["parent"] = wu_epos
+
+    # wait until 잔여적 = 0 AND 게임상태 = 1
     eleft_v2 = vrep("잔여적", V_ELEFT)
     cond_e0 = cmp_op("operator_equals", eleft_v2, 0)
     state_v = vrep("게임상태", V_STATE)
     cond_alive = cmp_op("operator_equals", state_v, 1)
     cond_next = bool_op("operator_and", cond_e0, cond_alive)
+    wu_done = gen(); bs[wu_done] = mk("control_wait_until",
+        inputs={"CONDITION": [2, cond_next]})
+    bs[cond_next]["parent"] = wu_done
 
     w_pre = gen(); bs[w_pre] = mk("control_wait", inputs={"DURATION": num(1.5)})
     inc_r = gen(); bs[inc_r] = mk("data_changevariableby",
@@ -447,20 +470,13 @@ def build_stage_blocks():
         inputs={"BROADCAST_INPUT": [1, bm_r2]})
     bs[bm_r2]["parent"] = bc_r2
 
-    chain([(w_pre, bs[w_pre]), (inc_r, bs[inc_r]),
+    chain([(wu_epos, bs[wu_epos]), (wu_done, bs[wu_done]),
+           (w_pre, bs[w_pre]), (inc_r, bs[inc_r]),
            (set_esp, bs[set_esp]), (bc_r2, bs[bc_r2])])
 
-    if_next = gen(); bs[if_next] = mk("control_if",
-        inputs={"CONDITION": [2, cond_next], "SUBSTACK": [2, w_pre]})
-    bs[cond_next]["parent"] = if_next
-    bs[w_pre]["parent"] = if_next
-
-    w_watch = gen(); bs[w_watch] = mk("control_wait", inputs={"DURATION": num(0.2)})
-    chain([(if_next, bs[if_next]), (w_watch, bs[w_watch])])
-
     fe_watch = gen(); bs[fe_watch] = mk("control_forever",
-        inputs={"SUBSTACK": [2, if_next]})
-    bs[if_next]["parent"] = fe_watch
+        inputs={"SUBSTACK": [2, wu_epos]})
+    bs[wu_epos]["parent"] = fe_watch
 
     chain([(h5, bs[h5]), (fe_watch, bs[fe_watch])])
 
@@ -841,15 +857,15 @@ def build_enemy_blocks():
     show = gen(); bs[show] = mk("looks_show")
 
     # forever body
-    # check collision with player shell first (포탄종류=0)
+    # check collision with shell — use touching only, no 포탄종류 check to avoid
+    # race condition where multiple enemy clones overwrite the shared V_BKIND variable.
+    # Enemy shells travel away from the firing tank so brief self-touch is negligible.
     tm_b = gen(); bs[tm_b] = mk("sensing_touchingobjectmenu",
         fields={"TOUCHINGOBJECTMENU": ["포탄", None]}, shadow=True)
     tc_b = gen(); bs[tc_b] = mk("sensing_touchingobject",
         inputs={"TOUCHINGOBJECTMENU": [1, tm_b]})
     bs[tm_b]["parent"] = tc_b
-    bkind_v = vrep("포탄종류", V_BKIND)
-    cond_pk = cmp_op("operator_equals", bkind_v, 0)
-    cond_killed = bool_op("operator_and", tc_b, cond_pk)
+    cond_killed = tc_b
 
     inc_score = gen(); bs[inc_score] = mk("data_changevariableby",
         inputs={"VALUE": num(20)}, fields={"VARIABLE": ["점수", V_SCORE]})
@@ -1008,6 +1024,12 @@ def build_cover_blocks():
     hi = gen(); bs[hi] = mk("looks_hide")
     sz = gen(); bs[sz] = mk("looks_setsizeto", inputs={"SIZE": num(80)})
     chain([(h, bs[h]), (hi, bs[hi]), (sz, bs[sz])])
+
+    # on 엄폐물제거 → delete this clone (clears all cover clones before round restart)
+    h_clr = gen(); bs[h_clr] = mk("event_whenbroadcastreceived", top=True, x=400, y=200,
+        fields={"BROADCAST_OPTION": ["엄폐물제거", BR_CLRCOV]})
+    del_clr = gen(); bs[del_clr] = mk("control_delete_this_clone")
+    chain([(h_clr, bs[h_clr]), (del_clr, bs[del_clr])])
 
     # on 엄폐물생성 → create clone
     h2 = gen(); bs[h2] = mk("event_whenbroadcastreceived", top=True, x=20, y=200,
@@ -1173,8 +1195,8 @@ def main():
             BR_ROUND:  "라운드시작",
             BR_ESPAWN: "적스폰",
             BR_COVER:  "엄폐물생성",
-            BR_FIRE:   "사격",
             BR_EFIRE:  "적사격",
+            BR_CLRCOV: "엄폐물제거",
         },
         "blocks": stage_blocks, "comments": {},
         "currentCostume": 0,

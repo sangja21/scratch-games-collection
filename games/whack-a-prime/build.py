@@ -49,8 +49,41 @@ BG_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="480" height="360" vie
   </g>
 </svg>"""
 
-# -------- Mole SVG (60x60): cute brown mole face --------
-MOLE_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 60 60">
+# -------- Mole SVG costumes --------
+# Costume 0: hidden (just hat, barely peeking out)
+MOLE_PEEK_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 60 60">
+  <defs>
+    <radialGradient id="body" cx="0.5" cy="0.4" r="0.6">
+      <stop offset="0%"   stop-color="#8D6E63"/>
+      <stop offset="100%" stop-color="#5D4037"/>
+    </radialGradient>
+  </defs>
+  <!-- Only top of head visible (peeking) -->
+  <ellipse cx="30" cy="54" rx="22" ry="20" fill="url(#body)" stroke="#3E2723" stroke-width="1.5"/>
+  <ellipse cx="30" cy="38" rx="9" ry="4" fill="#4E342E" opacity="0.6"/>
+</svg>"""
+
+# Costume 1: half emerged
+MOLE_HALF_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 60 60">
+  <defs>
+    <radialGradient id="body" cx="0.5" cy="0.4" r="0.6">
+      <stop offset="0%"   stop-color="#8D6E63"/>
+      <stop offset="100%" stop-color="#5D4037"/>
+    </radialGradient>
+  </defs>
+  <!-- Half body visible -->
+  <ellipse cx="30" cy="44" rx="22" ry="20" fill="url(#body)" stroke="#3E2723" stroke-width="1.5"/>
+  <ellipse cx="30" cy="28" rx="9" ry="4" fill="#4E342E" opacity="0.6"/>
+  <circle cx="22" cy="42" r="4.5" fill="#FFFFFF"/>
+  <circle cx="38" cy="42" r="4.5" fill="#FFFFFF"/>
+  <circle cx="23" cy="43" r="2.5" fill="#1A1A1A"/>
+  <circle cx="39" cy="43" r="2.5" fill="#1A1A1A"/>
+  <circle cx="23.5" cy="42" r="0.8" fill="#FFFFFF"/>
+  <circle cx="39.5" cy="42" r="0.8" fill="#FFFFFF"/>
+</svg>"""
+
+# Costume 2: fully emerged
+MOLE_FULL_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 60 60">
   <defs>
     <radialGradient id="body" cx="0.5" cy="0.4" r="0.6">
       <stop offset="0%"   stop-color="#8D6E63"/>
@@ -102,10 +135,16 @@ def chain(seq):
 V_SCORE = "varScore001"
 V_TIME  = "varTime002"
 V_STATE = "varState003"   # 1 = playing, 0 = over
-V_NUM   = "varNum004"     # mole-local
-V_HX    = "varHX005"      # mole-local hole x
-V_HY    = "varHY006"      # mole-local hole y
-V_PRIME = "varPrime007"   # mole-local 1=prime, 0=not
+V_NUM   = "varNum004"     # shared (set at clone-start then immediately used)
+V_HX    = "varHX005"      # shared hole x (set at clone-start)
+V_HY    = "varHY006"      # shared hole y (set at clone-start)
+V_PRIME = "varPrime007"   # shared (used as temp during isPrime computation)
+V_HOLE_N = "varHoleN008"  # shared hole number (set at clone-start)
+
+# List IDs: L_PRIME_MAP[hole_index 1..6] = isPrime for the active clone in that hole
+# L_USED_HOLES: list of currently occupied hole numbers (for exclusivity check)
+L_PRIME_MAP  = "listPrime001"
+L_USED_HOLES = "listUsed002"
 
 BR_START = "brStart001"
 BR_END   = "brEnd002"
@@ -118,6 +157,10 @@ def make_helpers(bs):
         bid = gen()
         bs[bid] = mk("data_variable", fields={"VARIABLE": [name, vid]})
         return bid
+    def lrep(name, lid):
+        bid = gen()
+        bs[bid] = mk("data_listcontents", fields={"LIST": [name, lid]})
+        return bid
     def op(opcode, a, b_, key1="NUM1", key2="NUM2"):
         bid = gen()
         ins = {}
@@ -129,14 +172,12 @@ def make_helpers(bs):
             if isinstance(v, str): bs[v]["parent"] = bid
         return bid
     def bool_op(opcode, a, b_):
-        # boolean operands plug as [2, blockId] (no shadow)
         bid = gen()
         bs[bid] = mk(opcode, inputs={"OPERAND1": [2, a], "OPERAND2": [2, b_]})
         bs[a]["parent"] = bid
         bs[b_]["parent"] = bid
         return bid
     def cmp_op(opcode, a, b_):
-        # operator_equals/lt/gt take OPERAND1, OPERAND2 with regular shadows
         bid = gen()
         ins = {}
         for key, val in [("OPERAND1", a), ("OPERAND2", b_)]:
@@ -146,12 +187,22 @@ def make_helpers(bs):
         for v in (a, b_):
             if isinstance(v, str): bs[v]["parent"] = bid
         return bid
-    return vrep, op, bool_op, cmp_op
+    return vrep, lrep, op, bool_op, cmp_op
+
+def make_join(bs, a_bid, b_text):
+    """Join block: STRING1=a_bid(block ref), STRING2=text_lit"""
+    bid = gen()
+    bs[bid] = mk("operator_join",
+        inputs={"STRING1": slot(a_bid, sk=10, sv=""),
+                "STRING2": text_lit(b_text)[1]})
+    bs[a_bid]["parent"] = bid
+    # STRING2 is an inline literal, no block to reparent
+    return bid
 
 # ---------------- STAGE blocks ----------------
 def build_stage_blocks():
     bs = {}
-    vrep, op, bool_op, cmp_op = make_helpers(bs)
+    vrep, lrep, op, bool_op, cmp_op = make_helpers(bs)
 
     # === when flag clicked: init game ===
     h = gen(); bs[h] = mk("event_whenflagclicked", top=True, x=20, y=20)
@@ -197,12 +248,79 @@ def build_stage_blocks():
     bs[bm2]["parent"] = bcast2
 
     chain([(th,bs[th]),(rep_until,bs[rep_until]),(set_over,bs[set_over]),(bcast2,bs[bcast2])])
+
+    # === when received 게임종료: show Game Over + final score ===
+    # [FIX-WARN] Stage now handles game-over broadcast to show result screen
+    eh = gen(); bs[eh] = mk("event_whenbroadcastreceived", top=True, x=400, y=300,
+        fields={"BROADCAST_OPTION": ["게임종료", BR_END]})
+
+    # Build join block: "Game Over! 점수: " + 점수_var
+    score_var = vrep("점수", V_SCORE)
+    join_bid = gen()
+    bs[join_bid] = mk("operator_join",
+        inputs={"STRING1": [1, [10, "Game Over!  점수: "]],
+                "STRING2": slot(score_var, sk=10, sv="0")})
+    bs[score_var]["parent"] = join_bid
+
+    say_over = gen(); bs[say_over] = mk("looks_sayforsecs",
+        inputs={"MESSAGE": slot(join_bid, sk=10, sv=""), "SECS": num(5)})
+    bs[join_bid]["parent"] = say_over
+
+    chain([(eh,bs[eh]),(say_over,bs[say_over])])
+
     return bs
+
+# ---------------- helper: build isPrime blocks for a number variable --------
+# Appends blocks to bs; returns (set_prime1, [if_lt2, div_ifs...]) for sequencing.
+# The computation reads V_NUM then sets V_PRIME to 1 or 0.
+def build_isprime_blocks(bs):
+    """Build the isPrime computation sequence blocks.
+    Returns list of (bid, block) tuples to be inserted into a chain.
+    Reads V_NUM, writes V_PRIME.
+    """
+    vrep, lrep, op, bool_op, cmp_op = make_helpers(bs)
+
+    seq = []
+
+    # isPrime = 1
+    set_p1 = gen(); bs[set_p1] = mk("data_setvariableto",
+        inputs={"VALUE": num(1)}, fields={"VARIABLE": ["isPrime", V_PRIME]})
+    seq.append((set_p1, bs[set_p1]))
+
+    # if 숫자 < 2: isPrime = 0
+    nv1 = vrep("숫자", V_NUM)
+    cond_lt2 = cmp_op("operator_lt", nv1, 2)
+    set_p0_a = gen(); bs[set_p0_a] = mk("data_setvariableto",
+        inputs={"VALUE": num(0)}, fields={"VARIABLE": ["isPrime", V_PRIME]})
+    if_lt2 = gen(); bs[if_lt2] = mk("control_if",
+        inputs={"CONDITION":[2, cond_lt2], "SUBSTACK":[2, set_p0_a]})
+    bs[cond_lt2]["parent"] = if_lt2
+    bs[set_p0_a]["parent"] = if_lt2
+    seq.append((if_lt2, bs[if_lt2]))
+
+    # "if 숫자 > p AND 숫자 mod p = 0: isPrime = 0" for p in [2,3,5,7]
+    for p in [2, 3, 5, 7]:
+        nv_a = vrep("숫자", V_NUM)
+        gt_p = cmp_op("operator_gt", nv_a, p)
+        nv_b = vrep("숫자", V_NUM)
+        mod_p = op("operator_mod", nv_b, p)
+        eq_zero = cmp_op("operator_equals", mod_p, 0)
+        bs[mod_p]["parent"] = eq_zero
+        and_b = bool_op("operator_and", gt_p, eq_zero)
+        sp0 = gen(); bs[sp0] = mk("data_setvariableto",
+            inputs={"VALUE": num(0)}, fields={"VARIABLE": ["isPrime", V_PRIME]})
+        ifb = gen(); bs[ifb] = mk("control_if",
+            inputs={"CONDITION":[2, and_b], "SUBSTACK":[2, sp0]})
+        bs[and_b]["parent"] = ifb
+        bs[sp0]["parent"] = ifb
+        seq.append((ifb, bs[ifb]))
+
+    return seq
 
 # ---------------- MOLE blocks ----------------
 def build_mole_blocks():
     bs = {}
-    vrep, op, bool_op, cmp_op = make_helpers(bs)
+    vrep, lrep, op, bool_op, cmp_op = make_helpers(bs)
 
     # Mole pop-up positions: shifted +46px above each hole center so the mole's
     # bottom edge sits at the hole's top rim (mole height = 60·1.1 = 66, half = 33;
@@ -218,11 +336,33 @@ def build_mole_blocks():
         ( 160,  -79),  # 6: bot-right
     ]
 
-    # === when flag clicked: hide ===
+    # === when flag clicked: hide + init lists ===
     h = gen(); bs[h] = mk("event_whenflagclicked", top=True, x=20, y=20)
     hi = gen(); bs[hi] = mk("looks_hide")
     sz = gen(); bs[sz] = mk("looks_setsizeto", inputs={"SIZE": num(110)})
-    chain([(h,bs[h]),(hi,bs[hi]),(sz,bs[sz])])
+
+    # [FIX-INFO] Initialize both lists with 6 zeros (one slot per hole, index=hole number)
+    # 소수맵[i] = isPrime for the active clone in hole i
+    # 사용중인굴[i] = 1 if hole i is occupied, 0 if free
+    del_pm = gen(); bs[del_pm] = mk("data_deletealloflist",
+        fields={"LIST": ["소수맵", L_PRIME_MAP]})
+    del_uh = gen(); bs[del_uh] = mk("data_deletealloflist",
+        fields={"LIST": ["사용중인굴", L_USED_HOLES]})
+
+    # Add 6 initial 0 entries to each list
+    add_blocks = []
+    for _ in range(6):
+        ab = gen(); bs[ab] = mk("data_addtolist",
+            inputs={"ITEM": num(0)}, fields={"LIST": ["소수맵", L_PRIME_MAP]})
+        add_blocks.append((ab, bs[ab]))
+    for _ in range(6):
+        ab = gen(); bs[ab] = mk("data_addtolist",
+            inputs={"ITEM": num(0)}, fields={"LIST": ["사용중인굴", L_USED_HOLES]})
+        add_blocks.append((ab, bs[ab]))
+
+    init_seq = [(h,bs[h]),(hi,bs[hi]),(sz,bs[sz]),(del_pm,bs[del_pm]),(del_uh,bs[del_uh])]
+    init_seq += add_blocks
+    chain(init_seq)
 
     # === when received 게임시작: spawn loop ===
     sh = gen(); bs[sh] = mk("event_whenbroadcastreceived", top=True, x=20, y=200,
@@ -259,16 +399,61 @@ def build_mole_blocks():
         inputs={"VALUE": slot(rn)}, fields={"VARIABLE": ["숫자", V_NUM]})
     bs[rn]["parent"] = set_num
 
-    # 굴번호 = random 1~6, sequence of `if 굴번호=k: set 굴X, 굴Y` blocks
-    rh = op("operator_random", 1, 6, key1="FROM", key2="TO")
-    set_hole_num = gen(); bs[set_hole_num] = mk("data_setvariableto",
-        inputs={"VALUE": slot(rh)}, fields={"VARIABLE": ["굴번호", "varHoleN008"]})
-    bs[rh]["parent"] = set_hole_num
+    # [FIX-WARN] Compute isPrime NOW (while 숫자 is still this clone's number)
+    # This avoids the shared-variable race: isPrime is computed in the same
+    # script tick as setting 숫자, before any other clone can overwrite 숫자.
+    isprime_seq = build_isprime_blocks(bs)
 
-    # 6 if-blocks setting 굴X, 굴Y
+    # [FIX-INFO] Hole exclusivity: pick a hole where 사용중인굴[hole] = 0 (free).
+    # 사용중인굴 is a fixed 6-slot boolean array (0=free, 1=occupied), index=hole number.
+    # repeat-until loop: pick random hole; exit when 사용중인굴[굴번호] = 0
+    rh = op("operator_random", 1, 6, key1="FROM", key2="TO")
+    set_hole_init = gen(); bs[set_hole_init] = mk("data_setvariableto",
+        inputs={"VALUE": slot(rh)}, fields={"VARIABLE": ["굴번호", V_HOLE_N]})
+    bs[rh]["parent"] = set_hole_init
+
+    # condition: item 굴번호 of 사용중인굴 = 0  (hole is free)
+    hn_var = vrep("굴번호", V_HOLE_N)
+    item_used = gen(); bs[item_used] = mk("data_itemoflist",
+        inputs={"INDEX": slot(hn_var)},
+        fields={"LIST": ["사용중인굴", L_USED_HOLES]})
+    bs[hn_var]["parent"] = item_used
+
+    cond_free = cmp_op("operator_equals", item_used, 0)
+    bs[item_used]["parent"] = cond_free
+
+    # loop body: re-roll
+    rh2 = op("operator_random", 1, 6, key1="FROM", key2="TO")
+    reroll = gen(); bs[reroll] = mk("data_setvariableto",
+        inputs={"VALUE": slot(rh2)}, fields={"VARIABLE": ["굴번호", V_HOLE_N]})
+    bs[rh2]["parent"] = reroll
+
+    hole_pick_loop = gen(); bs[hole_pick_loop] = mk("control_repeat_until",
+        inputs={"CONDITION":[2, cond_free], "SUBSTACK":[2, reroll]})
+    bs[cond_free]["parent"] = hole_pick_loop
+    bs[reroll]["parent"] = hole_pick_loop
+
+    # Mark this hole as occupied: replace item 굴번호 of 사용중인굴 with 1
+    hn_var2 = vrep("굴번호", V_HOLE_N)
+    mark_used = gen(); bs[mark_used] = mk("data_replaceitemoflist",
+        inputs={"INDEX": slot(hn_var2), "ITEM": num(1)},
+        fields={"LIST": ["사용중인굴", L_USED_HOLES]})
+    bs[hn_var2]["parent"] = mark_used
+
+    # [FIX-WARN] Store computed isPrime in L_PRIME_MAP at index 굴번호
+    # replace item 굴번호 of 소수맵 with isPrime
+    pv_store = vrep("isPrime", V_PRIME)
+    hn_idx = vrep("굴번호", V_HOLE_N)
+    replace_prime = gen(); bs[replace_prime] = mk("data_replaceitemoflist",
+        inputs={"INDEX": slot(hn_idx), "ITEM": slot(pv_store, sk=10, sv="0")},
+        fields={"LIST": ["소수맵", L_PRIME_MAP]})
+    bs[pv_store]["parent"] = replace_prime
+    bs[hn_idx]["parent"] = replace_prime
+
+    # 6 if-blocks setting 굴X, 굴Y from hole number
     hole_if_blocks = []
     for i, (hx, hy) in enumerate(holes, start=1):
-        hole_var = vrep("굴번호", "varHoleN008")
+        hole_var = vrep("굴번호", V_HOLE_N)
         eq = cmp_op("operator_equals", hole_var, i)
         sx = gen(); bs[sx] = mk("data_setvariableto",
             inputs={"VALUE": num(hx)}, fields={"VARIABLE": ["굴X", V_HX]})
@@ -287,6 +472,16 @@ def build_mole_blocks():
         inputs={"X": slot(hxv), "Y": slot(hyv)})
     bs[hxv]["parent"] = g_pop; bs[hyv]["parent"] = g_pop
 
+    # [FIX-INFO] Pop-up animation: switch costumes peek→half→full
+    sw_peek = gen(); bs[sw_peek] = mk("looks_switchcostumeto",
+        inputs={"COSTUME": [1, [10, "두더지_peek"]]})
+    w_anim1 = gen(); bs[w_anim1] = mk("control_wait", inputs={"DURATION": num(0.1)})
+    sw_half = gen(); bs[sw_half] = mk("looks_switchcostumeto",
+        inputs={"COSTUME": [1, [10, "두더지_half"]]})
+    w_anim2 = gen(); bs[w_anim2] = mk("control_wait", inputs={"DURATION": num(0.1)})
+    sw_full = gen(); bs[sw_full] = mk("looks_switchcostumeto",
+        inputs={"COSTUME": [1, [10, "두더지_full"]]})
+
     show = gen(); bs[show] = mk("looks_show")
 
     # say 숫자 (persistent until cleared)
@@ -295,58 +490,92 @@ def build_mole_blocks():
         inputs={"MESSAGE": slot(nvar, sk=10, sv="")})
     bs[nvar]["parent"] = say_blk
 
-    # stay visible for 1.3 sec
-    wstay = gen(); bs[wstay] = mk("control_wait", inputs={"DURATION": num(1.3)})
+    # stay visible for 1.3 sec (minus animation time 0.2s already spent)
+    wstay = gen(); bs[wstay] = mk("control_wait", inputs={"DURATION": num(1.1)})
 
-    # clear bubble + hide + delete
+    # [FIX-INFO] Pop-down: switch back to peek before hiding
+    sw_half2 = gen(); bs[sw_half2] = mk("looks_switchcostumeto",
+        inputs={"COSTUME": [1, [10, "두더지_half"]]})
+    w_anim3 = gen(); bs[w_anim3] = mk("control_wait", inputs={"DURATION": num(0.1)})
+    sw_peek2 = gen(); bs[sw_peek2] = mk("looks_switchcostumeto",
+        inputs={"COSTUME": [1, [10, "두더지_peek"]]})
+    w_anim4 = gen(); bs[w_anim4] = mk("control_wait", inputs={"DURATION": num(0.1)})
+
+    # clear bubble + hide + remove from used holes + delete
     say_clear = gen(); bs[say_clear] = mk("looks_say",
         inputs={"MESSAGE": text_lit("")})
     hide_c = gen(); bs[hide_c] = mk("looks_hide")
+
+    # [FIX-INFO] Free hole on clone timeout end: replace item 굴번호 with 0
+    hn_del = vrep("굴번호", V_HOLE_N)
+    free_used = gen(); bs[free_used] = mk("data_replaceitemoflist",
+        inputs={"INDEX": slot(hn_del), "ITEM": num(0)},
+        fields={"LIST": ["사용중인굴", L_USED_HOLES]})
+    bs[hn_del]["parent"] = free_used
+
     delc = gen(); bs[delc] = mk("control_delete_this_clone")
 
     # Chain clone start
-    seq = [(ch,bs[ch]),(set_num,bs[set_num]),(set_hole_num,bs[set_hole_num])]
+    seq = [(ch,bs[ch]),(set_num,bs[set_num])]
+    seq += isprime_seq
+    seq += [(set_hole_init,bs[set_hole_init]),(hole_pick_loop,bs[hole_pick_loop]),
+            (mark_used,bs[mark_used]),(replace_prime,bs[replace_prime])]
     for ifb in hole_if_blocks:
         seq.append((ifb, bs[ifb]))
-    seq += [(g_pop,bs[g_pop]),(show,bs[show]),(say_blk,bs[say_blk]),
-            (wstay,bs[wstay]),(say_clear,bs[say_clear]),
-            (hide_c,bs[hide_c]),(delc,bs[delc])]
+    seq += [(g_pop,bs[g_pop]),
+            (sw_peek,bs[sw_peek]),(w_anim1,bs[w_anim1]),
+            (sw_half,bs[sw_half]),(w_anim2,bs[w_anim2]),
+            (sw_full,bs[sw_full]),
+            (show,bs[show]),(say_blk,bs[say_blk]),
+            (wstay,bs[wstay]),
+            (sw_half2,bs[sw_half2]),(w_anim3,bs[w_anim3]),
+            (sw_peek2,bs[sw_peek2]),(w_anim4,bs[w_anim4]),
+            (say_clear,bs[say_clear]),(hide_c,bs[hide_c]),
+            (free_used,bs[free_used]),(delc,bs[delc])]
     chain(seq)
 
     # === when this sprite clicked ===
     cl = gen(); bs[cl] = mk("event_whenthisspriteclicked", top=True, x=900, y=20)
 
-    # isPrime = 1
-    set_p1 = gen(); bs[set_p1] = mk("data_setvariableto",
-        inputs={"VALUE": num(1)}, fields={"VARIABLE": ["isPrime", V_PRIME]})
+    # [FIX-WARN] Read isPrime from L_PRIME_MAP using THIS clone's position.
+    # Determine hole index from (x position, y position) - truly clone-local values.
+    # For each hole i: if x_pos=hx AND y_pos=hy:
+    #   set isPrime = item i of 소수맵
+    #   replace item i of 사용중인굴 with 0  (free hole while we still know i)
+    click_hole_ifs = []
+    for i, (hx, hy) in enumerate(holes, start=1):
+        # x position = hx
+        xpos_bid = gen(); bs[xpos_bid] = mk("motion_xposition")
+        eq_x = cmp_op("operator_equals", xpos_bid, hx)
+        # y position = hy
+        ypos_bid = gen(); bs[ypos_bid] = mk("motion_yposition")
+        eq_y = cmp_op("operator_equals", ypos_bid, hy)
+        # AND
+        and_xy = bool_op("operator_and", eq_x, eq_y)
 
-    # if 숫자 < 2: isPrime = 0
-    nv1 = vrep("숫자", V_NUM)
-    cond_lt2 = cmp_op("operator_lt", nv1, 2)
-    set_p0_a = gen(); bs[set_p0_a] = mk("data_setvariableto",
-        inputs={"VALUE": num(0)}, fields={"VARIABLE": ["isPrime", V_PRIME]})
-    if_lt2 = gen(); bs[if_lt2] = mk("control_if",
-        inputs={"CONDITION":[2, cond_lt2], "SUBSTACK":[2, set_p0_a]})
-    bs[cond_lt2]["parent"] = if_lt2
-    bs[set_p0_a]["parent"] = if_lt2
+        # item i of 소수맵
+        item_bid = gen(); bs[item_bid] = mk("data_itemoflist",
+            inputs={"INDEX": num(i)},
+            fields={"LIST": ["소수맵", L_PRIME_MAP]})
 
-    # generate "if 숫자 > p AND 숫자 mod p = 0: isPrime = 0" for p in [2,3,5,7]
-    div_ifs = []
-    for p in [2, 3, 5, 7]:
-        nv_a = vrep("숫자", V_NUM)
-        gt_p = cmp_op("operator_gt", nv_a, p)
-        nv_b = vrep("숫자", V_NUM)
-        mod_p = op("operator_mod", nv_b, p)
-        eq_zero = cmp_op("operator_equals", mod_p, 0)
-        bs[mod_p]["parent"] = eq_zero
-        and_b = bool_op("operator_and", gt_p, eq_zero)
-        sp0 = gen(); bs[sp0] = mk("data_setvariableto",
-            inputs={"VALUE": num(0)}, fields={"VARIABLE": ["isPrime", V_PRIME]})
+        # set isPrime = item i
+        set_p_from_map = gen(); bs[set_p_from_map] = mk("data_setvariableto",
+            inputs={"VALUE": slot(item_bid, sk=10, sv="0")},
+            fields={"VARIABLE": ["isPrime", V_PRIME]})
+        bs[item_bid]["parent"] = set_p_from_map
+
+        # free hole i (index is literal, no shared-variable issue)
+        free_hole_i = gen(); bs[free_hole_i] = mk("data_replaceitemoflist",
+            inputs={"INDEX": num(i), "ITEM": num(0)},
+            fields={"LIST": ["사용중인굴", L_USED_HOLES]})
+
+        chain([(set_p_from_map, bs[set_p_from_map]), (free_hole_i, bs[free_hole_i])])
+
         ifb = gen(); bs[ifb] = mk("control_if",
-            inputs={"CONDITION":[2, and_b], "SUBSTACK":[2, sp0]})
-        bs[and_b]["parent"] = ifb
-        bs[sp0]["parent"] = ifb
-        div_ifs.append(ifb)
+            inputs={"CONDITION":[2, and_xy], "SUBSTACK":[2, set_p_from_map]})
+        bs[and_xy]["parent"] = ifb
+        bs[set_p_from_map]["parent"] = ifb
+        click_hole_ifs.append((ifb, bs[ifb]))
 
     # if isPrime = 1 -> 점수+=1, play pop, else 점수-=1
     pv = vrep("isPrime", V_PRIME)
@@ -388,9 +617,8 @@ def build_mole_blocks():
     hide_w = gen(); bs[hide_w] = mk("looks_hide")
     delc2 = gen(); bs[delc2] = mk("control_delete_this_clone")
 
-    click_seq = [(cl,bs[cl]),(set_p1,bs[set_p1]),(if_lt2,bs[if_lt2])]
-    for ifb in div_ifs:
-        click_seq.append((ifb, bs[ifb]))
+    click_seq = [(cl,bs[cl])]
+    click_seq += click_hole_ifs
     click_seq += [(if_else,bs[if_else]),(say_clear2,bs[say_clear2]),
                   (hide_w,bs[hide_w]),(delc2,bs[delc2])]
     chain(click_seq)
@@ -406,9 +634,17 @@ def main():
     with open(f"{WORK}/{bg_md5}.svg", "w", encoding="utf-8") as f:
         f.write(BG_SVG)
 
-    mole_md5 = md5_bytes(MOLE_SVG.encode("utf-8"))
-    with open(f"{WORK}/{mole_md5}.svg", "w", encoding="utf-8") as f:
-        f.write(MOLE_SVG)
+    peek_md5 = md5_bytes(MOLE_PEEK_SVG.encode("utf-8"))
+    with open(f"{WORK}/{peek_md5}.svg", "w", encoding="utf-8") as f:
+        f.write(MOLE_PEEK_SVG)
+
+    half_md5 = md5_bytes(MOLE_HALF_SVG.encode("utf-8"))
+    with open(f"{WORK}/{half_md5}.svg", "w", encoding="utf-8") as f:
+        f.write(MOLE_HALF_SVG)
+
+    full_md5 = md5_bytes(MOLE_FULL_SVG.encode("utf-8"))
+    with open(f"{WORK}/{full_md5}.svg", "w", encoding="utf-8") as f:
+        f.write(MOLE_FULL_SVG)
 
     pop_src = f"{ASSETS}/pop.wav"
     with open(pop_src, "rb") as f: pop_bytes = f.read()
@@ -447,20 +683,39 @@ def main():
     mole = {
         "isStage": False, "name": "두더지",
         "variables": {
-            V_NUM:   ["숫자", 0],
-            V_HX:    ["굴X", 0],
-            V_HY:    ["굴Y", 0],
-            V_PRIME: ["isPrime", 1],
-            "varHoleN008": ["굴번호", 1],
+            V_NUM:    ["숫자", 0],
+            V_HX:     ["굴X", 0],
+            V_HY:     ["굴Y", 0],
+            V_PRIME:  ["isPrime", 1],
+            V_HOLE_N: ["굴번호", 1],
         },
-        "lists": {}, "broadcasts": {},
+        # [FIX-WARN/INFO] Lists for clone-safe isPrime map and hole exclusivity
+        # Both are 6-slot arrays indexed by hole number (1..6).
+        "lists": {
+            L_PRIME_MAP:  ["소수맵",     [0,0,0,0,0,0]],
+            L_USED_HOLES: ["사용중인굴", [0,0,0,0,0,0]],
+        },
+        "broadcasts": {},
         "blocks": mole_blocks, "comments": {},
         "currentCostume": 0,
-        "costumes": [{
-            "name": "두더지", "bitmapResolution": 1, "dataFormat": "svg",
-            "assetId": mole_md5, "md5ext": f"{mole_md5}.svg",
-            "rotationCenterX": 30, "rotationCenterY": 30
-        }],
+        # [FIX-INFO] Three costumes for pop-up animation
+        "costumes": [
+            {
+                "name": "두더지_peek", "bitmapResolution": 1, "dataFormat": "svg",
+                "assetId": peek_md5, "md5ext": f"{peek_md5}.svg",
+                "rotationCenterX": 30, "rotationCenterY": 30
+            },
+            {
+                "name": "두더지_half", "bitmapResolution": 1, "dataFormat": "svg",
+                "assetId": half_md5, "md5ext": f"{half_md5}.svg",
+                "rotationCenterX": 30, "rotationCenterY": 30
+            },
+            {
+                "name": "두더지_full", "bitmapResolution": 1, "dataFormat": "svg",
+                "assetId": full_md5, "md5ext": f"{full_md5}.svg",
+                "rotationCenterX": 30, "rotationCenterY": 30
+            },
+        ],
         "sounds": [{
             "name": "pop", "assetId": pop_md5, "dataFormat": "wav",
             "format": "", "rate": 48000, "sampleCount": 1123,

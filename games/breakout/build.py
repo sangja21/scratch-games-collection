@@ -504,6 +504,8 @@ def build_ball_blocks():
 
     dec_life = gen(); bs[dec_life] = mk("data_changevariableby",
         inputs={"VALUE": num(-1)}, fields={"VARIABLE": ["목숨", V_LIVES]})
+    # 즉시 공을 안전 위치로 이동 → 같은 루프 다음 틱에 y<-175 중복 판정 방지
+    sy_safe = gen(); bs[sy_safe] = mk("motion_sety", inputs={"Y": num(-135)})
     snd_lose = play_sound(bs, "lose")
 
     # if 목숨<=0 → 결과=1, 게임상태=0 ; else broadcast 공발사
@@ -522,7 +524,7 @@ def build_ball_blocks():
     bs[set_res1]["parent"] = if_dead
     bs[bc_launch]["parent"] = if_dead
 
-    chain([(dec_life,bs[dec_life]),(snd_lose,bs[snd_lose]),(if_dead,bs[if_dead])])
+    chain([(dec_life,bs[dec_life]),(sy_safe,bs[sy_safe]),(snd_lose,bs[snd_lose]),(if_dead,bs[if_dead])])
     if_fall = gen(); bs[if_fall] = mk("control_if",
         inputs={"CONDITION":[2,cond_fall], "SUBSTACK":[2,dec_life]})
     bs[cond_fall]["parent"] = if_fall
@@ -555,10 +557,11 @@ def build_brick_blocks():
     sz = gen(); bs[sz] = mk("looks_setsizeto", inputs={"SIZE": num(100)})
     chain([(h,bs[h]),(hi,bs[hi]),(sz,bs[sz])])
 
-    # === on 벽돌생성: hide + 벽돌수=0 + 펼친 32 spawn 체인 ===
+    # === on 벽돌생성: hide + 이전 클론 전체 삭제 + 벽돌수=0 + 펼친 32 spawn 체인 ===
     h2 = gen(); bs[h2] = mk("event_whenbroadcastreceived", top=True, x=20, y=200,
         fields={"BROADCAST_OPTION": ["벽돌생성", BR_BRICKS]})
     hi2 = gen(); bs[hi2] = mk("looks_hide")
+    del_clones = gen(); bs[del_clones] = mk("control_delete_all_clones")
     set_cnt0 = gen(); bs[set_cnt0] = mk("data_setvariableto",
         inputs={"VALUE": num(0)}, fields={"VARIABLE": ["벽돌수", V_BRICKCNT]})
 
@@ -584,7 +587,7 @@ def build_brick_blocks():
             spawn_chain.extend([(sx,bs[sx]),(sy,bs[sy]),(srow,bs[srow]),
                                 (cclone,bs[cclone]),(inc_cnt,bs[inc_cnt]),(wt,bs[wt])])
 
-    chain([(h2,bs[h2]),(hi2,bs[hi2]),(set_cnt0,bs[set_cnt0])] + spawn_chain)
+    chain([(h2,bs[h2]),(hi2,bs[hi2]),(del_clones,bs[del_clones]),(set_cnt0,bs[set_cnt0])] + spawn_chain)
 
     # === when I start as a clone ===
     ch = gen(); bs[ch] = mk("control_start_as_clone", top=True, x=400, y=20)

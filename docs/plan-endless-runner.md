@@ -291,7 +291,7 @@ flappy-bird 와 동일.
 
 1. `zipfile.is_zipfile()` 통과
 2. `project.json` JSON 로드 OK
-3. targets 수: 7 (Stage, 러너, 선인장, 박쥐, 바닥, 게임오버) — 6 스프라이트 + Stage = 7
+3. targets 수: 6 (Stage, 러너, 선인장, 박쥐, 바닥, 게임오버) — Stage 포함 6개
 4. Stage 변수 8개(점수/최고기록/게임상태/VY/스크롤속도/스폰주기/점프이전키/장애물종류) 모두 등록
 5. Broadcasts: 게임시작 / 선인장스폰 / 박쥐스폰 3개
 6. 선인장 sprite 코스튬 1개(cactus), 박쥐 sprite 코스튬 1개(bat)

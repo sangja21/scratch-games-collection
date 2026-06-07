@@ -625,7 +625,7 @@ def build_boss_blocks():
     # --- flag: init ---
     h = gen(); bs[h] = mk("event_whenflagclicked", top=True, x=20, y=20)
     show = gen(); bs[show] = mk("looks_show")
-    sz = gen(); bs[sz] = mk("looks_setsizeto", inputs={"SIZE": num(80)})
+    sz = gen(); bs[sz] = mk("looks_setsizeto", inputs={"SIZE": num(160)})
     g0 = gen(); bs[g0] = mk("motion_gotoxy", inputs={"X": num(0), "Y": num(110)})
     rs = gen(); bs[rs] = mk("motion_setrotationstyle",
         fields={"STYLE": ["don't rotate", None]})
@@ -1191,7 +1191,7 @@ def main():
         }],
         "sounds": [pop_sound()],
         "volume": 100, "layerOrder": 5, "visible": True,
-        "x": 0, "y": 110, "size": 80, "direction": 90,
+        "x": 0, "y": 110, "size": 160, "direction": 90,
         "draggable": False, "rotationStyle": "don't rotate"
     }
 

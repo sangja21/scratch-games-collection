@@ -456,19 +456,23 @@ def build_cube_blocks():
         inputs={"DY": slot(vy_v_d)})
     bs[vy_v_d]["parent"] = chy
 
-    # --- block landing: if touching 블록 → change y by 4, VY=0 ---
+    # --- block landing: if (touching 블록 AND VY<0) → change y by 4, VY=0 ---
     tm_block = gen(); bs[tm_block] = mk("sensing_touchingobjectmenu",
         fields={"TOUCHINGOBJECTMENU": ["블록", None]}, shadow=True)
     tc_block = gen(); bs[tc_block] = mk("sensing_touchingobject",
         inputs={"TOUCHINGOBJECTMENU":[1, tm_block]})
     bs[tm_block]["parent"] = tc_block
+    # VY < 0 guard
+    vy_v_block = vrep("VY", V_VY)
+    cond_vy_neg = cmp_op("operator_lt", vy_v_block, 0)
+    cond_block_land = bool_op("operator_and", tc_block, cond_vy_neg)
     push_up = gen(); bs[push_up] = mk("motion_changeyby", inputs={"DY": num(4)})
     set_vy_zero_block = gen(); bs[set_vy_zero_block] = mk("data_setvariableto",
         inputs={"VALUE": num(0)}, fields={"VARIABLE": ["VY", V_VY]})
     chain([(push_up,bs[push_up]),(set_vy_zero_block,bs[set_vy_zero_block])])
     if_block = gen(); bs[if_block] = mk("control_if",
-        inputs={"CONDITION":[2,tc_block], "SUBSTACK":[2,push_up]})
-    bs[tc_block]["parent"] = if_block
+        inputs={"CONDITION":[2,cond_block_land], "SUBSTACK":[2,push_up]})
+    bs[cond_block_land]["parent"] = if_block
     bs[push_up]["parent"] = if_block
 
     # --- floor clamp: if y < -130 → goto -150,-130 + VY=0 ---
@@ -668,10 +672,13 @@ def build_gameover_blocks():
         inputs={"CONDITION":[2, cond_zero]})
     bs[cond_zero]["parent"] = wait_over
 
+    # wait 1 tick before showing banner to avoid last-frame flicker
+    wt_tick = gen(); bs[wt_tick] = mk("control_wait", inputs={"DURATION": num(0.05)})
+
     show = gen(); bs[show] = mk("looks_show")
 
     chain([(h,bs[h]),(hi,bs[hi]),(g,bs[g]),(sz,bs[sz]),(front,bs[front]),
-           (wait_start,bs[wait_start]),(wait_over,bs[wait_over]),(show,bs[show])])
+           (wait_start,bs[wait_start]),(wait_over,bs[wait_over]),(wt_tick,bs[wt_tick]),(show,bs[show])])
     return bs
 
 # ============================================================
@@ -868,7 +875,7 @@ def main():
         {"id": V_SCROLL, "mode": "default", "opcode": "data_variable",
          "params": {"VARIABLE": "스크롤속도"}, "spriteName": None,
          "value": 6, "width": 0, "height": 0, "x": 5, "y": 65,
-         "visible": True, "sliderMin": 0, "sliderMax": 50, "isDiscrete": True},
+         "visible": True, "sliderMin": 0, "sliderMax": 50, "isDiscrete": False},
     ]
 
     project = {

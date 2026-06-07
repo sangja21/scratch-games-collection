@@ -376,8 +376,22 @@ def build_crosshair_blocks():
     snd = gen(); bs[snd] = mk("sound_play", inputs={"SOUND_MENU": [1, snm]})
     bs[snm]["parent"] = snd
 
+    # if ammo = 0 AND 오리상태 = 0: 오리상태 = 2 (duck escapes immediately)
+    ammo_v2 = vrep("탄약", V_AMMO)
+    cond_ammo_zero = cmp_op("operator_equals", ammo_v2, 0)
+    ds_v_ch = vrep("오리상태", V_DUCKS)
+    cond_duck_flying = cmp_op("operator_equals", ds_v_ch, 0)
+    cond_ammo_escape = bool_op("operator_and", cond_ammo_zero, cond_duck_flying)
+    set_escape = gen(); bs[set_escape] = mk("data_setvariableto",
+        inputs={"VALUE": num(2)}, fields={"VARIABLE": ["오리상태", V_DUCKS]})
+    if_ammo_escape = gen(); bs[if_ammo_escape] = mk("control_if",
+        inputs={"CONDITION": [2, cond_ammo_escape], "SUBSTACK": [2, set_escape]})
+    bs[cond_ammo_escape]["parent"] = if_ammo_escape
+    bs[set_escape]["parent"] = if_ammo_escape
+
     chain([(dec_ammo, bs[dec_ammo]), (set_fx, bs[set_fx]), (set_fy, bs[set_fy]),
-           (cclone, bs[cclone]), (pitch, bs[pitch]), (snd, bs[snd])])
+           (cclone, bs[cclone]), (pitch, bs[pitch]), (snd, bs[snd]),
+           (if_ammo_escape, bs[if_ammo_escape])])
 
     if_fire = gen(); bs[if_fire] = mk("control_if",
         inputs={"CONDITION": [2, cond_both], "SUBSTACK": [2, dec_ammo]})
@@ -552,9 +566,17 @@ def build_duck_blocks():
         inputs={"COSTUME": [1, cm_hit]})
     bs[cm_hit]["parent"] = swc_hit
 
+    # broadcast 명중 (BR_HIT)
+    bm_hit = gen(); bs[bm_hit] = mk("event_broadcast_menu",
+        fields={"BROADCAST_OPTION": ["명중", BR_HIT]}, shadow=True)
+    bc_hit = gen(); bs[bc_hit] = mk("event_broadcast",
+        inputs={"BROADCAST_INPUT": [1, bm_hit]})
+    bs[bm_hit]["parent"] = bc_hit
+
     chain([(set_ds1, bs[set_ds1]), (inc_score, bs[inc_score]),
            (inc_kills, bs[inc_kills]), (pitch_hit, bs[pitch_hit]),
-           (snd_hit, bs[snd_hit]), (swc_hit, bs[swc_hit])])
+           (snd_hit, bs[snd_hit]), (swc_hit, bs[swc_hit]),
+           (bc_hit, bs[bc_hit])])
 
     if_hit = gen(); bs[if_hit] = mk("control_if",
         inputs={"CONDITION": [2, tc_h], "SUBSTACK": [2, set_ds1]})

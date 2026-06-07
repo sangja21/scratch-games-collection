@@ -535,11 +535,9 @@ def build_plane_blocks():
 
     # dy -= 0.25
     grav = changevar(bs, "dy", V_DY, -0.25)
-    # dx += (바람 / 10)  -- 바람 변수/모니터는 -1.5~+1.5 그대로, 비행 누적 효과만 1/10
+    # dx += 바람  -- plan 명세대로 바람을 직접 적용 (1/10 스케일 제거)
     wind_v = vrep("바람", V_WIND)
-    wind_div = op("operator_divide", wind_v, 10)
-    bs[wind_v]["parent"] = wind_div
-    add_wind = changevar(bs, "dx", V_DX, wind_div)
+    add_wind = changevar(bs, "dx", V_DX, wind_v)
     # if dx < 0.3: dx = 0.3
     dx_c = vrep("dx", V_DX)
     cond_dxlo = cmp_op("operator_lt", dx_c, 0.3)

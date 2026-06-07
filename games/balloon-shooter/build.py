@@ -205,6 +205,8 @@ def build_stage_blocks():
         (("점수",   V_SCORE), 0),
         (("시간",   V_TIME),  60),
         (("게임상태", V_STATE), 1),
+        (("섬광X",  V_FX),   0),
+        (("섬광Y",  V_FY),   0),
         (("풍선스폰X", V_BX),  0),
         (("풍선크기", V_BSIZE), 2),
         (("풍선색", V_BCOLOR), 1),
@@ -429,6 +431,12 @@ def build_balloon_blocks():
         fields={"BROADCAST_OPTION": ["게임종료", BR_END]})
     hi_end = gen(); bs[hi_end] = mk("looks_hide")
     chain([(h3, bs[h3]), (hi_end, bs[hi_end])])
+
+    # ---- clone on 게임종료: instant delete (avoids waiting for forever-loop check) ----
+    h4 = gen(); bs[h4] = mk("event_whenbroadcastreceived", top=True, x=300, y=260,
+        fields={"BROADCAST_OPTION": ["게임종료", BR_END]})
+    del_clone_br = gen(); bs[del_clone_br] = mk("control_delete_this_clone")
+    chain([(h4, bs[h4]), (del_clone_br, bs[del_clone_br])])
 
     # ---- clone start: setup + rise + collision ----
     ch = gen(); bs[ch] = mk("control_start_as_clone", top=True, x=300, y=20)

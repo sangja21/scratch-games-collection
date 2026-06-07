@@ -541,23 +541,14 @@ def build_ship_blocks():
     chain([(h2, bs[h2]), (fe_det, bs[fe_det])])
 
     # --- forever (fuel-out game-over watcher) ---
+    # Simplified: fuel <= 0 AND state=1 → immediately game over (no speed check)
     h3 = gen(); bs[h3] = mk("event_whenflagclicked", top=True, x=800, y=20)
     fuel_w = vrep("연료", V_FUEL)
     cond_f0 = cmp_op("operator_lt", fuel_w, 1)
     state_w = vrep("게임상태", V_STATE)
     cond_alive = cmp_op("operator_equals", state_w, 1)
 
-    # also need ship nearly stopped to declare "stranded" — simplification: just fuel<=0 AND speed near 0
-    vx_w = vrep("우주선VX", V_SVX)
-    abs_vxw = abs_of(bs, vx_w)
-    cond_vx0 = cmp_op("operator_lt", abs_vxw, 0.2)
-    vy_w = vrep("우주선VY", V_SVY)
-    abs_vyw = abs_of(bs, vy_w)
-    cond_vy0 = cmp_op("operator_lt", abs_vyw, 0.2)
-    cond_stop = bool_op("operator_and", cond_vx0, cond_vy0)
-
-    cond_a1 = bool_op("operator_and", cond_f0, cond_alive)
-    cond_stranded = bool_op("operator_and", cond_a1, cond_stop)
+    cond_stranded = bool_op("operator_and", cond_f0, cond_alive)
 
     set_state0_f = gen(); bs[set_state0_f] = mk("data_setvariableto",
         inputs={"VALUE": num(0)}, fields={"VARIABLE": ["게임상태", V_STATE]})
@@ -642,6 +633,7 @@ def build_gameover_blocks():
     bs = {}
     vrep, op, cmp_op, _ = make_helpers(bs)
 
+    # --- flag clicked: hide, position, size, front, then loop: wait→show→wait→hide ---
     h = gen(); bs[h] = mk("event_whenflagclicked", top=True, x=20, y=20)
     hi = gen(); bs[hi] = mk("looks_hide")
     g = gen(); bs[g] = mk("motion_gotoxy", inputs={"X": num(0), "Y": num(0)})
@@ -649,12 +641,7 @@ def build_gameover_blocks():
     front = gen(); bs[front] = mk("looks_gotofrontback",
         fields={"FRONT_BACK": ["front", None]})
 
-    state_v1 = vrep("게임상태", V_STATE)
-    cond_one = cmp_op("operator_equals", state_v1, 1)
-    wait_start = gen(); bs[wait_start] = mk("control_wait_until",
-        inputs={"CONDITION": [2, cond_one]})
-    bs[cond_one]["parent"] = wait_start
-
+    # wait until 게임상태=0 (game over happened)
     state_v2 = vrep("게임상태", V_STATE)
     cond_zero = cmp_op("operator_equals", state_v2, 0)
     wait_over = gen(); bs[wait_over] = mk("control_wait_until",
@@ -662,8 +649,31 @@ def build_gameover_blocks():
     bs[cond_zero]["parent"] = wait_over
 
     show = gen(); bs[show] = mk("looks_show")
+
+    # wait until 게임상태=1 (game restarted)
+    state_v3 = vrep("게임상태", V_STATE)
+    cond_one_again = cmp_op("operator_equals", state_v3, 1)
+    wait_restart = gen(); bs[wait_restart] = mk("control_wait_until",
+        inputs={"CONDITION": [2, cond_one_again]})
+    bs[cond_one_again]["parent"] = wait_restart
+
+    hi2 = gen(); bs[hi2] = mk("looks_hide")
+
+    chain([(wait_over, bs[wait_over]), (show, bs[show]),
+           (wait_restart, bs[wait_restart]), (hi2, bs[hi2])])
+
+    fe = gen(); bs[fe] = mk("control_forever", inputs={"SUBSTACK": [2, wait_over]})
+    bs[wait_over]["parent"] = fe
+
     chain([(h, bs[h]), (hi, bs[hi]), (g, bs[g]), (sz, bs[sz]), (front, bs[front]),
-           (wait_start, bs[wait_start]), (wait_over, bs[wait_over]), (show, bs[show])])
+           (fe, bs[fe])])
+
+    # --- on 충돌 broadcast: show game over banner immediately ---
+    h2 = gen(); bs[h2] = mk("event_whenbroadcastreceived", top=True, x=300, y=20,
+        fields={"BROADCAST_OPTION": ["충돌", BR_CRASH]})
+    show2 = gen(); bs[show2] = mk("looks_show")
+    chain([(h2, bs[h2]), (show2, bs[show2])])
+
     return bs
 
 # ============================================================

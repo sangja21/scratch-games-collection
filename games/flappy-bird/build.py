@@ -421,6 +421,41 @@ def build_bird_blocks():
     bs[cond_best]["parent"] = if_best
     bs[set_best]["parent"] = if_best
 
+    # --- VY-based tilt: point in direction (90 - VY*4), clamped to [55, 125] ---
+    # Clamp upper: if (90 - VY*4) > 125 then point 125
+    vy_v_thi = vrep("VY", V_VY)
+    tilt_mul_hi = op("operator_multiply", vy_v_thi, 4)
+    tilt_calc_hi = op("operator_subtract", 90, tilt_mul_hi, key1="NUM1", key2="NUM2")
+    cond_hi = cmp_op("operator_gt", tilt_calc_hi, 125)
+    bs[tilt_calc_hi]["parent"] = cond_hi
+    set_dir_hi = gen(); bs[set_dir_hi] = mk("motion_pointindirection",
+        inputs={"DIRECTION": num(125)})
+    if_tilt_hi = gen(); bs[if_tilt_hi] = mk("control_if",
+        inputs={"CONDITION":[2,cond_hi], "SUBSTACK":[2,set_dir_hi]})
+    bs[cond_hi]["parent"] = if_tilt_hi
+    bs[set_dir_hi]["parent"] = if_tilt_hi
+
+    # Clamp lower: if (90 - VY*4) < 55 then point 55
+    vy_v_tlo = vrep("VY", V_VY)
+    tilt_mul_lo = op("operator_multiply", vy_v_tlo, 4)
+    tilt_calc_lo = op("operator_subtract", 90, tilt_mul_lo, key1="NUM1", key2="NUM2")
+    cond_lo = cmp_op("operator_lt", tilt_calc_lo, 55)
+    bs[tilt_calc_lo]["parent"] = cond_lo
+    set_dir_lo = gen(); bs[set_dir_lo] = mk("motion_pointindirection",
+        inputs={"DIRECTION": num(55)})
+    if_tilt_lo = gen(); bs[if_tilt_lo] = mk("control_if",
+        inputs={"CONDITION":[2,cond_lo], "SUBSTACK":[2,set_dir_lo]})
+    bs[cond_lo]["parent"] = if_tilt_lo
+    bs[set_dir_lo]["parent"] = if_tilt_lo
+
+    # Normal: point in direction (90 - VY*4)
+    vy_v_tn = vrep("VY", V_VY)
+    tilt_mul_n = op("operator_multiply", vy_v_tn, 4)
+    tilt_calc_n = op("operator_subtract", 90, tilt_mul_n, key1="NUM1", key2="NUM2")
+    pdir_tilt = gen(); bs[pdir_tilt] = mk("motion_pointindirection",
+        inputs={"DIRECTION": slot(tilt_calc_n)})
+    bs[tilt_calc_n]["parent"] = pdir_tilt
+
     # wait 0.025
     wt = gen(); bs[wt] = mk("control_wait", inputs={"DURATION": num(0.025)})
 
@@ -428,7 +463,9 @@ def build_bird_blocks():
            (grav,bs[grav]),(if_vylo,bs[if_vylo]),(chy,bs[chy]),
            (if_yt,bs[if_yt]),(if_yb,bs[if_yb]),
            (if_top,bs[if_top]),(if_bot,bs[if_bot]),
-           (if_best,bs[if_best]),(wt,bs[wt])])
+           (if_best,bs[if_best]),
+           (if_tilt_hi,bs[if_tilt_hi]),(if_tilt_lo,bs[if_tilt_lo]),
+           (pdir_tilt,bs[pdir_tilt]),(wt,bs[wt])])
 
     rep_until = gen(); bs[rep_until] = mk("control_repeat_until",
         inputs={"CONDITION":[2,cond_over], "SUBSTACK":[2,if_jump]})
@@ -753,7 +790,7 @@ def main():
         "sounds": [pop_sound()],
         "volume": 100, "layerOrder": 3, "visible": True,
         "x": -100, "y": 0, "size": 80, "direction": 90,
-        "draggable": False, "rotationStyle": "don't rotate"
+        "draggable": False, "rotationStyle": "all around"
     }
 
     top_pipe = {

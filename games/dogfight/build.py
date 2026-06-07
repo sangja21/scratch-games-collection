@@ -685,6 +685,8 @@ def build_bullet_blocks(broadcast_name, broadcast_id,
         inputs={"DIRECTION": slot(bdir_v)})
     bs[bdir_v]["parent"] = point_b
     show = gen(); bs[show] = mk("looks_show")
+    clr_ghost = gen(); bs[clr_ghost] = mk("looks_seteffectto",
+        inputs={"VALUE": num(0)}, fields={"EFFECT": ["GHOST", None]})
 
     # body inside repeat 50
     mv = gen(); bs[mv] = mk("motion_movesteps", inputs={"STEPS": num(move_steps)})
@@ -705,7 +707,7 @@ def build_bullet_blocks(broadcast_name, broadcast_id,
     bs[tc_a]["parent"] = if_hit
     bs[hi_a]["parent"] = if_hit
 
-    w_b = gen(); bs[w_b] = mk("control_wait", inputs={"DURATION": num(0.02)})
+    w_b = gen(); bs[w_b] = mk("control_wait", inputs={"DURATION": num(0.03)})
 
     # chain: mv → wrap_head … wrap_tail → if_hit → w_b
     chain([(mv, bs[mv]), (wrap_head, bs[wrap_head])])
@@ -721,7 +723,7 @@ def build_bullet_blocks(broadcast_name, broadcast_id,
     del_end = gen(); bs[del_end] = mk("control_delete_this_clone")
 
     chain([(ch, bs[ch]), (g, bs[g]), (point_b, bs[point_b]),
-           (show, bs[show]), (rep_life, bs[rep_life]),
+           (show, bs[show]), (clr_ghost, bs[clr_ghost]), (rep_life, bs[rep_life]),
            (hi_end, bs[hi_end]), (del_end, bs[del_end])])
 
     return bs

@@ -155,7 +155,6 @@ BR_ROUND    = "brRound02"
 BR_ASPAWN   = "brASpawn03"
 BR_SPLITMED = "brSplitMed04"
 BR_SPLITSML = "brSplitSmall05"
-BR_FIRE     = "brFire06"
 
 def make_helpers(bs):
     def vrep(name, vid):
@@ -712,8 +711,12 @@ def build_ship_blocks():
         inputs={"SOUND_MENU": [1, snm_d]})
     bs[snm_d]["parent"] = snd_d
 
+    hi_ship = gen(); bs[hi_ship] = mk("looks_hide")
+    stop_ship = gen(); bs[stop_ship] = mk("control_stop",
+        fields={"STOP_OPTION": ["this script", None]})
+
     chain([(set_state0, bs[set_state0]), (pitch_die, bs[pitch_die]),
-           (snd_d, bs[snd_d])])
+           (snd_d, bs[snd_d]), (hi_ship, bs[hi_ship]), (stop_ship, bs[stop_ship])])
 
     if_die = gen(); bs[if_die] = mk("control_if",
         inputs={"CONDITION": [2, cond_die], "SUBSTACK": [2, set_state0]})
@@ -738,7 +741,7 @@ def build_bullet_blocks():
 
     h = gen(); bs[h] = mk("event_whenflagclicked", top=True, x=20, y=20)
     hi = gen(); bs[hi] = mk("looks_hide")
-    sz = gen(); bs[sz] = mk("looks_setsizeto", inputs={"SIZE": num(80)})
+    sz = gen(); bs[sz] = mk("looks_setsizeto", inputs={"SIZE": num(60)})
     rs = gen(); bs[rs] = mk("motion_setrotationstyle",
         fields={"STYLE": ["all around", None]})
     chain([(h, bs[h]), (hi, bs[hi]), (sz, bs[sz]), (rs, bs[rs])])
@@ -1281,7 +1284,6 @@ def main():
             BR_ASPAWN:   "소행성스폰",
             BR_SPLITMED: "분열중",
             BR_SPLITSML: "분열소",
-            BR_FIRE:     "발사",
         },
         "blocks": stage_blocks, "comments": {},
         "currentCostume": 0,
@@ -1324,7 +1326,7 @@ def main():
         }],
         "sounds": [pop_sound()],
         "volume": 100, "layerOrder": 4, "visible": False,
-        "x": 0, "y": 0, "size": 80, "direction": 0,
+        "x": 0, "y": 0, "size": 60, "direction": 0,
         "draggable": False, "rotationStyle": "all around"
     }
 

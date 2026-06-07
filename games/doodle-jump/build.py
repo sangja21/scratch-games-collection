@@ -166,7 +166,7 @@ def build_stage_blocks():
     s_state = gen(); bs[s_state] = mk("data_setvariableto",
         inputs={"VALUE": num(1)}, fields={"VARIABLE": ["게임상태", V_STATE]})
     s_vy = gen(); bs[s_vy] = mk("data_setvariableto",
-        inputs={"VALUE": num(15)}, fields={"VARIABLE": ["VY", V_VY]})
+        inputs={"VALUE": num(0)}, fields={"VARIABLE": ["VY", V_VY]})
     s_cam = gen(); bs[s_cam] = mk("data_setvariableto",
         inputs={"VALUE": num(0)}, fields={"VARIABLE": ["카메라", V_CAM]})
     s_basey = gen(); bs[s_basey] = mk("data_setvariableto",
@@ -186,7 +186,7 @@ def build_stage_blocks():
 
     chain([(h,bs[h]),(s_score,bs[s_score]),(s_state,bs[s_state]),
            (s_vy,bs[s_vy]),(s_cam,bs[s_cam]),(s_basey,bs[s_basey]),
-           (bc_start,bs[bc_start]),(bc_spawn,bs[bc_spawn])])
+           (bc_spawn,bs[bc_spawn]),(bc_start,bs[bc_start])])
 
     # === when receive 튕김: VY = 15 + play pop ===
     h2 = gen(); bs[h2] = mk("event_whenbroadcastreceived", top=True, x=20, y=260,
@@ -226,6 +226,8 @@ def build_doodle_blocks():
     # initial position + VY
     g0 = gen(); bs[g0] = mk("motion_gotoxy",
         inputs={"X": num(0), "Y": num(-60)})
+    # wait for platform clones to finish spawning (12 × 0.01s + margin)
+    wt_spawn = gen(); bs[wt_spawn] = mk("control_wait", inputs={"DURATION": num(0.15)})
     set_vy0 = gen(); bs[set_vy0] = mk("data_setvariableto",
         inputs={"VALUE": num(15)}, fields={"VARIABLE": ["VY", V_VY]})
 
@@ -357,7 +359,7 @@ def build_doodle_blocks():
     bs[cond_over]["parent"] = rep_until
     bs[if_l]["parent"] = rep_until
 
-    chain([(h2,bs[h2]),(g0,bs[g0]),(set_vy0,bs[set_vy0]),(rep_until,bs[rep_until])])
+    chain([(h2,bs[h2]),(g0,bs[g0]),(wt_spawn,bs[wt_spawn]),(set_vy0,bs[set_vy0]),(rep_until,bs[rep_until])])
 
     return bs
 

@@ -219,15 +219,27 @@ def build_stage_blocks():
     s_tick = gen(); bs[s_tick] = mk("data_setvariableto",
         inputs={"VALUE": num(0)}, fields={"VARIABLE": ["경과틱", V_TICK]})
 
+    # 이전 루프 중단 (재시작 시 이전 게임의 스크립트가 남아 있으면 중단)
+    stop_prev = gen(); bs[stop_prev] = mk("control_stop",
+        fields={"STOP_OPTION": ["other scripts in sprite", None]})
+
+    # 점수/최고기록 변수 표시를 명시적으로 보장
+    show_score = gen(); bs[show_score] = mk("data_showvariable",
+        fields={"VARIABLE": ["점수", V_SCORE]})
+    show_best = gen(); bs[show_best] = mk("data_showvariable",
+        fields={"VARIABLE": ["최고기록", V_BEST]})
+
     bm_start = gen(); bs[bm_start] = mk("event_broadcast_menu",
         fields={"BROADCAST_OPTION": ["게임시작", BR_START]}, shadow=True)
     bc_start = gen(); bs[bc_start] = mk("event_broadcast",
         inputs={"BROADCAST_INPUT": [1, bm_start]})
     bs[bm_start]["parent"] = bc_start
 
-    chain([(h,bs[h]),(s_score,bs[s_score]),(s_state,bs[s_state]),
+    chain([(h,bs[h]),(stop_prev,bs[stop_prev]),(s_score,bs[s_score]),(s_state,bs[s_state]),
            (s_lane,bs[s_lane]),(s_espd,bs[s_espd]),(s_lspd,bs[s_lspd]),
-           (s_spawn,bs[s_spawn]),(s_tick,bs[s_tick]),(bc_start,bs[bc_start])])
+           (s_spawn,bs[s_spawn]),(s_tick,bs[s_tick]),
+           (show_score,bs[show_score]),(show_best,bs[show_best]),
+           (bc_start,bs[bc_start])])
 
     # === when receive 게임시작 (forever 1: 적차 스폰 루프) ===
     h2 = gen(); bs[h2] = mk("event_whenbroadcastreceived", top=True, x=20, y=260,
@@ -523,8 +535,12 @@ def build_player_blocks():
     snd = gen(); bs[snd] = mk("sound_play", inputs={"SOUND_MENU":[1, snm]})
     bs[snm]["parent"] = snd
 
+    # 충돌 시 이 스프라이트의 다른 스크립트(움직임 루프 등)도 즉시 중단
+    stop_other = gen(); bs[stop_other] = mk("control_stop",
+        fields={"STOP_OPTION": ["other scripts in sprite", None]})
+
     chain([(set_state0,bs[set_state0]),(if_best,bs[if_best]),
-           (pitch,bs[pitch]),(snd,bs[snd])])
+           (pitch,bs[pitch]),(snd,bs[snd]),(stop_other,bs[stop_other])])
 
     if_hit = gen(); bs[if_hit] = mk("control_if",
         inputs={"CONDITION":[2,tc], "SUBSTACK":[2,set_state0]})
@@ -534,8 +550,11 @@ def build_player_blocks():
     # wait 0.025
     wt = gen(); bs[wt] = mk("control_wait", inputs={"DURATION": num(0.025)})
 
+    # y 좌표를 -130으로 고정 유지 (혹시 모를 y 드리프트 방지)
+    fix_y = gen(); bs[fix_y] = mk("motion_sety", inputs={"Y": num(-130)})
+
     chain([(if_l,bs[if_l]),(if_r,bs[if_r]),
-           (set_x_loop,bs[set_x_loop]),(if_hit,bs[if_hit]),(wt,bs[wt])])
+           (set_x_loop,bs[set_x_loop]),(fix_y,bs[fix_y]),(if_hit,bs[if_hit]),(wt,bs[wt])])
 
     rep_until = gen(); bs[rep_until] = mk("control_repeat_until",
         inputs={"CONDITION":[2,cond_over], "SUBSTACK":[2,if_l]})
@@ -615,6 +634,10 @@ def build_enemy_blocks():
         inputs={"VALUE": slot(spd_v)}, fields={"VARIABLE": ["내속도", V_MYV]})
     bs[spd_v]["parent"] = set_myv
 
+    # 적차 방향을 180(아래)으로 고정 (클론 생성 전 시각 방향 명시)
+    edir = gen(); bs[edir] = mk("motion_pointindirection",
+        inputs={"DIRECTION": num(180)})
+
     # create clone of _myself_
     cmenu = gen(); bs[cmenu] = mk("control_create_clone_of_menu",
         fields={"CLONE_OPTION":["_myself_", None]}, shadow=True)
@@ -623,7 +646,7 @@ def build_enemy_blocks():
     bs[cmenu]["parent"] = cclone
 
     chain([(h2,bs[h2]),(g,bs[g]),(if_red,bs[if_red]),(if_blue,bs[if_blue]),
-           (if_yel,bs[if_yel]),(set_myv,bs[set_myv]),(cclone,bs[cclone])])
+           (if_yel,bs[if_yel]),(set_myv,bs[set_myv]),(edir,bs[edir]),(cclone,bs[cclone])])
 
     # === when I start as clone: show + fall loop ===
     ch = gen(); bs[ch] = mk("control_start_as_clone", top=True, x=400, y=200)
@@ -641,15 +664,17 @@ def build_enemy_blocks():
         inputs={"DY": slot(neg_myv)})
     bs[neg_myv]["parent"] = chy
 
-    # if y < -200 → delete this clone
+    # if y < -200 → hide + delete this clone
     yp = gen(); bs[yp] = mk("motion_yposition")
     cond_off = cmp_op("operator_lt", yp, -200)
     bs[yp]["parent"] = cond_off
+    hide_off = gen(); bs[hide_off] = mk("looks_hide")
     del_off = gen(); bs[del_off] = mk("control_delete_this_clone")
+    chain([(hide_off,bs[hide_off]),(del_off,bs[del_off])])
     if_off = gen(); bs[if_off] = mk("control_if",
-        inputs={"CONDITION":[2,cond_off], "SUBSTACK":[2,del_off]})
+        inputs={"CONDITION":[2,cond_off], "SUBSTACK":[2,hide_off]})
     bs[cond_off]["parent"] = if_off
-    bs[del_off]["parent"] = if_off
+    bs[hide_off]["parent"] = if_off
 
     wt = gen(); bs[wt] = mk("control_wait", inputs={"DURATION": num(0.025)})
 
@@ -660,9 +685,10 @@ def build_enemy_blocks():
     bs[cond_over]["parent"] = rep_until
     bs[chy]["parent"] = rep_until
 
+    hide_end = gen(); bs[hide_end] = mk("looks_hide")
     del_end = gen(); bs[del_end] = mk("control_delete_this_clone")
     chain([(ch,bs[ch]),(show,bs[show]),(set_sz,bs[set_sz]),
-           (rep_until,bs[rep_until]),(del_end,bs[del_end])])
+           (rep_until,bs[rep_until]),(hide_end,bs[hide_end]),(del_end,bs[del_end])])
 
     return bs
 
@@ -718,11 +744,13 @@ def build_paint_blocks():
     yp = gen(); bs[yp] = mk("motion_yposition")
     cond_off = cmp_op("operator_lt", yp, -200)
     bs[yp]["parent"] = cond_off
+    hide_off = gen(); bs[hide_off] = mk("looks_hide")
     del_off = gen(); bs[del_off] = mk("control_delete_this_clone")
+    chain([(hide_off,bs[hide_off]),(del_off,bs[del_off])])
     if_off = gen(); bs[if_off] = mk("control_if",
-        inputs={"CONDITION":[2,cond_off], "SUBSTACK":[2,del_off]})
+        inputs={"CONDITION":[2,cond_off], "SUBSTACK":[2,hide_off]})
     bs[cond_off]["parent"] = if_off
-    bs[del_off]["parent"] = if_off
+    bs[hide_off]["parent"] = if_off
 
     wt = gen(); bs[wt] = mk("control_wait", inputs={"DURATION": num(0.025)})
 
@@ -733,9 +761,10 @@ def build_paint_blocks():
     bs[cond_over]["parent"] = rep_until
     bs[chy]["parent"] = rep_until
 
+    hide_end = gen(); bs[hide_end] = mk("looks_hide")
     del_end = gen(); bs[del_end] = mk("control_delete_this_clone")
     chain([(ch,bs[ch]),(show,bs[show]),(back,bs[back]),
-           (rep_until,bs[rep_until]),(del_end,bs[del_end])])
+           (rep_until,bs[rep_until]),(hide_end,bs[hide_end]),(del_end,bs[del_end])])
 
     return bs
 
@@ -753,6 +782,10 @@ def build_gameover_blocks():
     front = gen(); bs[front] = mk("looks_gotofrontback",
         fields={"FRONT_BACK":["front", None]})
 
+    # forever 루프: 매 라운드마다 게임시작 대기 → 게임오버 대기 → 배너 표시
+    # 이렇게 하면 깃발 재클릭 없이도 연속 게임에서 반복 동작함
+    hi2 = gen(); bs[hi2] = mk("looks_hide")   # 루프 시작 시 배너 숨김
+
     state_v1 = vrep("게임상태", V_STATE)
     cond_one = cmp_op("operator_equals", state_v1, 1)
     wait_start = gen(); bs[wait_start] = mk("control_wait_until",
@@ -767,8 +800,14 @@ def build_gameover_blocks():
 
     show = gen(); bs[show] = mk("looks_show")
 
+    chain([(hi2,bs[hi2]),(wait_start,bs[wait_start]),(wait_over,bs[wait_over]),(show,bs[show])])
+
+    forever = gen(); bs[forever] = mk("control_forever",
+        inputs={"SUBSTACK": [2, hi2]})
+    bs[hi2]["parent"] = forever
+
     chain([(h,bs[h]),(hi,bs[hi]),(g,bs[g]),(sz,bs[sz]),(front,bs[front]),
-           (wait_start,bs[wait_start]),(wait_over,bs[wait_over]),(show,bs[show])])
+           (forever,bs[forever])])
     return bs
 
 # ============================================================

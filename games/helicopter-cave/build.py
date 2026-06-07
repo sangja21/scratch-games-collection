@@ -35,7 +35,7 @@ BG_SVG = f"""<svg xmlns="http://www.w3.org/2000/svg" width="480" height="360" vi
   </g>
 </svg>"""
 
-# -------- Helicopter (60x40, side view facing right) --------
+# -------- Helicopter costume 1: rotor horizontal (60x40, side view facing right) --------
 HELI_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="60" height="40" viewBox="0 0 60 40">
   <!-- tail boom -->
   <rect x="2" y="18" width="22" height="6" rx="2" fill="#FFC107" stroke="#5D4037" stroke-width="1.4"/>
@@ -55,9 +55,35 @@ HELI_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="60" height="40" vie
   <line x1="46" y1="32" x2="46" y2="34" stroke="#424242" stroke-width="1.5"/>
   <!-- rotor mast -->
   <rect x="36" y="6" width="4" height="6" rx="1" fill="#424242"/>
-  <!-- main rotor (thick horizontal blade with motion blur) -->
+  <!-- main rotor: horizontal position -->
   <ellipse cx="38" cy="5" rx="26" ry="1.8" fill="#212121" opacity="0.85"/>
   <ellipse cx="38" cy="5" rx="26" ry="0.8" fill="#616161" opacity="0.5"/>
+</svg>"""
+
+# -------- Helicopter costume 2: rotor tilted (60x40, 45-degree rotation effect) --------
+HELI_SVG2 = """<svg xmlns="http://www.w3.org/2000/svg" width="60" height="40" viewBox="0 0 60 40">
+  <!-- tail boom -->
+  <rect x="2" y="18" width="22" height="6" rx="2" fill="#FFC107" stroke="#5D4037" stroke-width="1.4"/>
+  <!-- tail rotor support -->
+  <rect x="2" y="14" width="3" height="14" rx="1" fill="#5D4037"/>
+  <!-- tail rotor -->
+  <line x1="1" y1="10" x2="6" y2="32" stroke="#212121" stroke-width="1.6"/>
+  <!-- main body -->
+  <ellipse cx="38" cy="22" rx="18" ry="11" fill="#FFC107" stroke="#5D4037" stroke-width="1.6"/>
+  <!-- nose -->
+  <polygon points="56,22 50,17 50,27" fill="#FFA000" stroke="#5D4037" stroke-width="1.2"/>
+  <!-- cockpit window -->
+  <ellipse cx="46" cy="20" rx="6" ry="5" fill="#90CAF9" stroke="#1976D2" stroke-width="1.2"/>
+  <!-- landing skid -->
+  <rect x="28" y="34" width="22" height="2" rx="1" fill="#424242"/>
+  <line x1="32" y1="32" x2="32" y2="34" stroke="#424242" stroke-width="1.5"/>
+  <line x1="46" y1="32" x2="46" y2="34" stroke="#424242" stroke-width="1.5"/>
+  <!-- rotor mast -->
+  <rect x="36" y="6" width="4" height="6" rx="1" fill="#424242"/>
+  <!-- main rotor: tilted 45° position -->
+  <ellipse cx="38" cy="5" rx="18" ry="18" fill="none" stroke="#212121" stroke-width="1.8" opacity="0.7"/>
+  <line x1="19" y1="-12" x2="57" y2="22" stroke="#212121" stroke-width="1.8" opacity="0.85"/>
+  <line x1="19" y1="22" x2="57" y2="-12" stroke="#212121" stroke-width="1.8" opacity="0.85"/>
 </svg>"""
 
 # -------- Ceiling rock chunk (100x100, dark gray, rough bottom edge) --------
@@ -320,7 +346,7 @@ def build_heli_blocks():
     h = gen(); bs[h] = mk("event_whenflagclicked", top=True, x=20, y=20)
     g = gen(); bs[g] = mk("motion_gotoxy",
         inputs={"X": num(-150), "Y": num(0)})
-    sz = gen(); bs[sz] = mk("looks_setsizeto", inputs={"SIZE": num(100)})
+    sz = gen(); bs[sz] = mk("looks_setsizeto", inputs={"SIZE": num(60)})
     pdir = gen(); bs[pdir] = mk("motion_pointindirection", inputs={"DIRECTION": num(90)})
     sh = gen(); bs[sh] = mk("looks_show")
     chain([(h,bs[h]),(g,bs[g]),(sz,bs[sz]),(pdir,bs[pdir]),(sh,bs[sh])])
@@ -412,31 +438,29 @@ def build_heli_blocks():
     bs[cond_yb]["parent"] = if_yb
     bs[set_st_b]["parent"] = if_yb
 
-    # --- touching 천장막대 → state=0 ---
+    # --- touching 천장막대 OR 바닥막대 → state=0 (단일 control_if) ---
     tm_c = gen(); bs[tm_c] = mk("sensing_touchingobjectmenu",
         fields={"TOUCHINGOBJECTMENU": ["천장막대", None]}, shadow=True)
     tc_c = gen(); bs[tc_c] = mk("sensing_touchingobject",
         inputs={"TOUCHINGOBJECTMENU":[1, tm_c]})
     bs[tm_c]["parent"] = tc_c
-    set_st_c = gen(); bs[set_st_c] = mk("data_setvariableto",
-        inputs={"VALUE": num(0)}, fields={"VARIABLE": ["게임상태", V_STATE]})
-    if_tc = gen(); bs[if_tc] = mk("control_if",
-        inputs={"CONDITION":[2,tc_c], "SUBSTACK":[2,set_st_c]})
-    bs[tc_c]["parent"] = if_tc
-    bs[set_st_c]["parent"] = if_tc
 
-    # --- touching 바닥막대 → state=0 ---
     tm_f = gen(); bs[tm_f] = mk("sensing_touchingobjectmenu",
         fields={"TOUCHINGOBJECTMENU": ["바닥막대", None]}, shadow=True)
     tc_f = gen(); bs[tc_f] = mk("sensing_touchingobject",
         inputs={"TOUCHINGOBJECTMENU":[1, tm_f]})
     bs[tm_f]["parent"] = tc_f
-    set_st_f = gen(); bs[set_st_f] = mk("data_setvariableto",
+
+    cond_touch = bool_op("operator_or", tc_c, tc_f)
+    set_st_touch = gen(); bs[set_st_touch] = mk("data_setvariableto",
         inputs={"VALUE": num(0)}, fields={"VARIABLE": ["게임상태", V_STATE]})
-    if_tf = gen(); bs[if_tf] = mk("control_if",
-        inputs={"CONDITION":[2,tc_f], "SUBSTACK":[2,set_st_f]})
-    bs[tc_f]["parent"] = if_tf
-    bs[set_st_f]["parent"] = if_tf
+    if_touch = gen(); bs[if_touch] = mk("control_if",
+        inputs={"CONDITION":[2,cond_touch], "SUBSTACK":[2,set_st_touch]})
+    bs[cond_touch]["parent"] = if_touch
+    bs[set_st_touch]["parent"] = if_touch
+
+    # --- next costume: rotor animation ---
+    next_cos = gen(); bs[next_cos] = mk("looks_nextcostume")
 
     # --- best score: if 점수 > 최고기록 → 최고기록 = 점수 ---
     score_v = vrep("점수", V_SCORE)
@@ -456,7 +480,7 @@ def build_heli_blocks():
 
     chain([(if_else,bs[if_else]),(if_vyhi,bs[if_vyhi]),(if_vylo,bs[if_vylo]),
            (chy,bs[chy]),(if_yt,bs[if_yt]),(if_yb,bs[if_yb]),
-           (if_tc,bs[if_tc]),(if_tf,bs[if_tf]),(if_best,bs[if_best]),(wt,bs[wt])])
+           (if_touch,bs[if_touch]),(next_cos,bs[next_cos]),(if_best,bs[if_best]),(wt,bs[wt])])
 
     rep_until = gen(); bs[rep_until] = mk("control_repeat_until",
         inputs={"CONDITION":[2,cond_over], "SUBSTACK":[2,if_else]})
@@ -492,10 +516,11 @@ def build_ceil_blocks():
     bs = {}
     vrep, op, cmp_op, bool_op = make_helpers(bs)
 
-    # === when flag clicked: hide ===
+    # === when flag clicked: hide + set size 100 ===
     h = gen(); bs[h] = mk("event_whenflagclicked", top=True, x=20, y=20)
     hi = gen(); bs[hi] = mk("looks_hide")
-    chain([(h,bs[h]),(hi,bs[hi])])
+    sz_init = gen(); bs[sz_init] = mk("looks_setsizeto", inputs={"SIZE": num(100)})
+    chain([(h,bs[h]),(hi,bs[hi]),(sz_init,bs[sz_init])])
 
     # === when receive 막대스폰: goto + costume + size + clone ===
     h2 = gen(); bs[h2] = mk("event_whenbroadcastreceived", top=True, x=20, y=200,
@@ -578,7 +603,8 @@ def build_floor_blocks():
 
     h = gen(); bs[h] = mk("event_whenflagclicked", top=True, x=20, y=20)
     hi = gen(); bs[hi] = mk("looks_hide")
-    chain([(h,bs[h]),(hi,bs[hi])])
+    sz_init = gen(); bs[sz_init] = mk("looks_setsizeto", inputs={"SIZE": num(100)})
+    chain([(h,bs[h]),(hi,bs[hi]),(sz_init,bs[sz_init])])
 
     h2 = gen(); bs[h2] = mk("event_whenbroadcastreceived", top=True, x=20, y=200,
         fields={"BROADCAST_OPTION": ["막대스폰", BR_SPAWN]})
@@ -694,6 +720,10 @@ def main():
     with open(f"{WORK}/{hl_md5}.svg", "w", encoding="utf-8") as f:
         f.write(HELI_SVG)
 
+    hl2_md5 = md5_bytes(HELI_SVG2.encode("utf-8"))
+    with open(f"{WORK}/{hl2_md5}.svg", "w", encoding="utf-8") as f:
+        f.write(HELI_SVG2)
+
     ce_md5 = md5_bytes(CEIL_SVG.encode("utf-8"))
     with open(f"{WORK}/{ce_md5}.svg", "w", encoding="utf-8") as f:
         f.write(CEIL_SVG)
@@ -760,14 +790,21 @@ def main():
         "variables": {}, "lists": {}, "broadcasts": {},
         "blocks": heli_blocks, "comments": {},
         "currentCostume": 0,
-        "costumes": [{
-            "name": "heli", "bitmapResolution": 1, "dataFormat": "svg",
-            "assetId": hl_md5, "md5ext": f"{hl_md5}.svg",
-            "rotationCenterX": 30, "rotationCenterY": 20
-        }],
+        "costumes": [
+            {
+                "name": "heli", "bitmapResolution": 1, "dataFormat": "svg",
+                "assetId": hl_md5, "md5ext": f"{hl_md5}.svg",
+                "rotationCenterX": 30, "rotationCenterY": 20
+            },
+            {
+                "name": "heli2", "bitmapResolution": 1, "dataFormat": "svg",
+                "assetId": hl2_md5, "md5ext": f"{hl2_md5}.svg",
+                "rotationCenterX": 30, "rotationCenterY": 20
+            }
+        ],
         "sounds": [pop_sound()],
         "volume": 100, "layerOrder": 3, "visible": True,
-        "x": -150, "y": 0, "size": 100, "direction": 90,
+        "x": -150, "y": 0, "size": 60, "direction": 90,
         "draggable": False, "rotationStyle": "don't rotate"
     }
 

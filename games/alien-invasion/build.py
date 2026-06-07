@@ -111,6 +111,7 @@ V_FRY   = "varFRY11"
 V_SX    = "varSX12"      # enemy local: formation slot x
 V_SY    = "varSY13"      # enemy local: formation slot y
 V_FIREP = "varFireP14"   # enemy fire-chance denominator (smaller = more fire)
+V_INVINC = "varInvinc15" # invincibility flag: 1 while player is immune after hit
 
 BR_START   = "brStart01"
 BR_SPAWN   = "brSpawn02"
@@ -174,6 +175,8 @@ def build_stage_blocks():
         inputs={"VALUE": num(1.5)}, fields={"VARIABLE": ["적_속도", V_SPEED]})
     s_firep = gen(); bs[s_firep] = mk("data_setvariableto",
         inputs={"VALUE": num(400)}, fields={"VARIABLE": ["발사확률", V_FIREP]})
+    s_invinc = gen(); bs[s_invinc] = mk("data_setvariableto",
+        inputs={"VALUE": num(0)}, fields={"VARIABLE": ["무적", V_INVINC]})
 
     bm_start = gen(); bs[bm_start] = mk("event_broadcast_menu",
         fields={"BROADCAST_OPTION": ["게임시작", BR_START]}, shadow=True)
@@ -183,7 +186,7 @@ def build_stage_blocks():
 
     chain([(h,bs[h]),(s_score,bs[s_score]),(s_life,bs[s_life]),(s_wave,bs[s_wave]),
            (s_state,bs[s_state]),(s_speed,bs[s_speed]),(s_firep,bs[s_firep]),
-           (bc_start,bs[bc_start])])
+           (s_invinc,bs[s_invinc]),(bc_start,bs[bc_start])])
 
     # === on 게임시작: setup formation values, broadcast 적생성, run formation loop ===
     h2 = gen(); bs[h2] = mk("event_whenbroadcastreceived", top=True, x=20, y=200,
@@ -598,8 +601,11 @@ def build_enemy_blocks():
     cc_eb = gen(); bs[cc_eb] = mk("control_create_clone_of",
         inputs={"CLONE_OPTION":[1,cm_eb]})
     bs[cm_eb]["parent"] = cc_eb
+    # wait 0: yield so new clone's 'when I start as clone' can read V_FRX/V_FRY
+    # before another enemy clone overwrites them (eliminates race condition)
+    wt_yield = gen(); bs[wt_yield] = mk("control_wait", inputs={"DURATION": num(0)})
 
-    chain([(set_frx,bs[set_frx]),(set_fry,bs[set_fry]),(cc_eb,bs[cc_eb])])
+    chain([(set_frx,bs[set_frx]),(set_fry,bs[set_fry]),(cc_eb,bs[cc_eb]),(wt_yield,bs[wt_yield])])
     if_fire = gen(); bs[if_fire] = mk("control_if",
         inputs={"CONDITION":[2,cond_fire], "SUBSTACK":[2,set_frx]})
     bs[cond_fire]["parent"] = if_fire
@@ -647,12 +653,25 @@ def build_enemy_bullet_blocks():
 
     chy = gen(); bs[chy] = mk("motion_changeyby", inputs={"DY": num(-7)})
 
-    # if touching 우주선 → -1 life, sound, delete
+    # if touching 우주선 AND 무적=0 → set 무적=1, -1 life, wait 0.4s (invincibility),
+    # set 무적=0, sound, check game over, delete clone
     tm = gen(); bs[tm] = mk("sensing_touchingobjectmenu",
         fields={"TOUCHINGOBJECTMENU": ["우주선", None]}, shadow=True)
     tc = gen(); bs[tc] = mk("sensing_touchingobject",
         inputs={"TOUCHINGOBJECTMENU":[1, tm]})
     bs[tm]["parent"] = tc
+
+    inv_v = vrep("무적", V_INVINC)
+    cond_not_inv = cmp_op("operator_equals", inv_v, 0)
+    _, bool_and = make_helpers(bs)[2], make_helpers(bs)[3]
+    # rebuild bool_and from the local helpers
+    vrep2, op2, cmp_op2, bool_and2 = make_helpers(bs)
+    cond_hit_and_not_inv = bool_and2(tc, cond_not_inv)
+    bs[tc]["parent"] = cond_hit_and_not_inv
+    bs[cond_not_inv]["parent"] = cond_hit_and_not_inv
+
+    set_inv1 = gen(); bs[set_inv1] = mk("data_setvariableto",
+        inputs={"VALUE": num(1)}, fields={"VARIABLE": ["무적", V_INVINC]})
     dec_life = gen(); bs[dec_life] = mk("data_changevariableby",
         inputs={"VALUE": num(-1)}, fields={"VARIABLE": ["라이프", V_LIFE]})
     pitch_low = gen(); bs[pitch_low] = mk("sound_seteffectto",
@@ -661,6 +680,9 @@ def build_enemy_bullet_blocks():
         fields={"SOUND_MENU": ["pop", None]}, shadow=True)
     snd = gen(); bs[snd] = mk("sound_play", inputs={"SOUND_MENU":[1, snm]})
     bs[snm]["parent"] = snd
+    wt_inv = gen(); bs[wt_inv] = mk("control_wait", inputs={"DURATION": num(0.4)})
+    set_inv0 = gen(); bs[set_inv0] = mk("data_setvariableto",
+        inputs={"VALUE": num(0)}, fields={"VARIABLE": ["무적", V_INVINC]})
 
     # if 라이프 ≤ 0 → 게임상태 = 0
     life_v = vrep("라이프", V_LIFE)
@@ -673,13 +695,14 @@ def build_enemy_bullet_blocks():
     bs[set_state]["parent"] = if_dead
 
     delc_a = gen(); bs[delc_a] = mk("control_delete_this_clone")
-    chain([(dec_life,bs[dec_life]),(pitch_low,bs[pitch_low]),(snd,bs[snd]),
+    chain([(set_inv1,bs[set_inv1]),(dec_life,bs[dec_life]),(pitch_low,bs[pitch_low]),
+           (snd,bs[snd]),(wt_inv,bs[wt_inv]),(set_inv0,bs[set_inv0]),
            (if_dead,bs[if_dead]),(delc_a,bs[delc_a])])
 
     if_hit = gen(); bs[if_hit] = mk("control_if",
-        inputs={"CONDITION":[2,tc], "SUBSTACK":[2,dec_life]})
-    bs[tc]["parent"] = if_hit
-    bs[dec_life]["parent"] = if_hit
+        inputs={"CONDITION":[2,cond_hit_and_not_inv], "SUBSTACK":[2,set_inv1]})
+    bs[cond_hit_and_not_inv]["parent"] = if_hit
+    bs[set_inv1]["parent"] = if_hit
 
     wt = gen(); bs[wt] = mk("control_wait", inputs={"DURATION": num(0.03)})
     chain([(chy,bs[chy]),(if_hit,bs[if_hit]),(wt,bs[wt])])
@@ -753,7 +776,7 @@ def main():
 
     # Rotate rocket so it points up, then save
     with open(f"{ASSETS}/rocket.svg", "rb") as f: rocket_raw = f.read().decode("utf-8")
-    rocket_rotated = rotate_svg(rocket_raw, -45, 18, 18)
+    rocket_rotated = rotate_svg(rocket_raw, -90, 18, 18)
     rocket_md5 = md5_bytes(rocket_rotated.encode("utf-8"))
     with open(f"{WORK}/{rocket_md5}.svg", "w", encoding="utf-8") as f:
         f.write(rocket_rotated)
@@ -791,22 +814,23 @@ def main():
     stage = {
         "isStage": True, "name": "Stage",
         "variables": {
-            V_SCORE: ["점수", 0],
-            V_LIFE:  ["라이프", 3],
-            V_WAVE:  ["라운드", 1],
-            V_STATE: ["게임상태", 1],
-            V_FX:    ["진영X", 0],
-            V_FY:    ["진영Y", 130],
-            V_DIR:   ["적_방향", 1],
-            V_SPEED: ["적_속도", 1.5],
-            V_ECNT:  ["적수", 0],
-            V_FRX:   ["발사X", 0],
-            V_FRY:   ["발사Y", 0],
-            V_FIREP: ["발사확률", 400],
+            V_SCORE:  ["점수", 0],
+            V_LIFE:   ["라이프", 3],
+            V_WAVE:   ["라운드", 1],
+            V_STATE:  ["게임상태", 1],
+            V_FX:     ["진영X", 0],
+            V_FY:     ["진영Y", 130],
+            V_DIR:    ["적_방향", 1],
+            V_SPEED:  ["적_속도", 1.5],
+            V_ECNT:   ["적수", 0],
+            V_FRX:    ["발사X", 0],
+            V_FRY:    ["발사Y", 0],
+            V_FIREP:  ["발사확률", 400],
+            V_INVINC: ["무적", 0],
         },
         "lists": {},
         "broadcasts": {BR_START:"게임시작", BR_SPAWN:"적생성",
-                        BR_NEXT:"다음웨이브", BR_OVER:"게임종료"},
+                        BR_NEXT:"다음웨이브"},
         "blocks": stage_blocks, "comments": {},
         "currentCostume": 0,
         "costumes": [{

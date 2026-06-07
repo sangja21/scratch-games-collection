@@ -330,52 +330,47 @@ def build_stage_blocks():
     cond_need = cmp_op("operator_lt", spawned_v, target_v)
     cond_both = bool_op("operator_and", cond_alive, cond_need)
 
-    # set 표적종류 = random 1..10
+    # draw one random 1..10 into 표적종류 (single draw — shared for both thresholds)
     rand_k = op("operator_random", 1, 10, key1="FROM", key2="TO")
     set_kind = gen(); bs[set_kind] = mk("data_setvariableto",
         inputs={"VALUE": slot(rand_k)}, fields={"VARIABLE": ["표적종류", V_TKIND]})
     bs[rand_k]["parent"] = set_kind
 
-    # if 표적종류 > 6 → 표적종류 = 2 (scroll), if 표적종류 > 9 → 표적종류 = 3 (bell)
-    kv_a = vrep("표적종류", V_TKIND)
-    cond_gt6 = cmp_op("operator_gt", kv_a, 6)
-    set_k2 = gen(); bs[set_k2] = mk("data_setvariableto",
-        inputs={"VALUE": num(2)}, fields={"VARIABLE": ["표적종류", V_TKIND]})
-    if_gt6 = gen(); bs[if_gt6] = mk("control_if",
-        inputs={"CONDITION": [2, cond_gt6], "SUBSTACK": [2, set_k2]})
-    bs[cond_gt6]["parent"] = if_gt6; bs[set_k2]["parent"] = if_gt6
+    # Use if-else chain against the stored value to get correct 60/30/10 distribution:
+    #   표적종류 > 9  → 3 (bell,   10%)
+    #   표적종류 > 6  → 2 (scroll, 30%)
+    #   else         → 1 (target, 60%)
+    # Check > 9 first (sets 3); inner else checks > 6 (sets 2); innermost else sets 1.
 
-    kv_b = vrep("표적종류", V_TKIND)
-    cond_gt9 = cmp_op("operator_gt", kv_b, 9)
-    set_k3 = gen(); bs[set_k3] = mk("data_setvariableto",
-        inputs={"VALUE": num(3)}, fields={"VARIABLE": ["표적종류", V_TKIND]})
-    if_gt9 = gen(); bs[if_gt9] = mk("control_if",
-        inputs={"CONDITION": [2, cond_gt9], "SUBSTACK": [2, set_k3]})
-    bs[cond_gt9]["parent"] = if_gt9; bs[set_k3]["parent"] = if_gt9
-
-    # Now kind is 1, 2, or 3.  if kind = 1 → kind stays 1 (already <=6 above set kind to 2; reorder)
-    # FIX: we need kind=1 if rand<=6, kind=2 if 7..9, kind=3 if 10.
-    # Need to first set kind=1, then conditionally 2 then 3 — but the existing chain already does:
-    # rand 1..10 stored; if >6 set 2; if >9 set 3.  But rand=5 stays 5 (not 1). Fix: initialize kind=1.
-    # We'll insert a set kind=1 BEFORE the if_gt6 block to force 1, then sample fresh random into a temp var.
-    # Simpler: change ordering — set kind=1 first, then sample random into a separate var. Easier: change set_kind to
-    # set 표적종류=1, then sample rand 1..10 into a comparison block directly.  We'll keep set_kind as 1
-    # and use random comparisons inline.
-    # Replace existing set_kind: set 표적종류=1
+    # innermost else branch: set 표적종류 = 1
     set_kind_one = gen(); bs[set_kind_one] = mk("data_setvariableto",
         inputs={"VALUE": num(1)}, fields={"VARIABLE": ["표적종류", V_TKIND]})
 
-    # cond_gt6 now compares freshly drawn random > 6
-    # Replace cond_gt6 and cond_gt9 inputs with random calls.
-    rand_for_6 = op("operator_random", 1, 10, key1="FROM", key2="TO")
-    new_cond_gt6 = cmp_op("operator_gt", rand_for_6, 6)
-    bs[if_gt6]["inputs"]["CONDITION"] = [2, new_cond_gt6]
-    bs[new_cond_gt6]["parent"] = if_gt6
-    # detach old cond_gt6 reference (it is still in bs but unreferenced — harmless)
-    rand_for_9 = op("operator_random", 1, 10, key1="FROM", key2="TO")
-    new_cond_gt9 = cmp_op("operator_gt", rand_for_9, 9)
-    bs[if_gt9]["inputs"]["CONDITION"] = [2, new_cond_gt9]
-    bs[new_cond_gt9]["parent"] = if_gt9
+    # middle branch: set 표적종류 = 2
+    set_k2 = gen(); bs[set_k2] = mk("data_setvariableto",
+        inputs={"VALUE": num(2)}, fields={"VARIABLE": ["표적종류", V_TKIND]})
+
+    # inner if-else: if 표적종류 > 6 → set 2; else → set 1
+    kv_a = vrep("표적종류", V_TKIND)
+    cond_gt6 = cmp_op("operator_gt", kv_a, 6)
+    if_gt6 = gen(); bs[if_gt6] = mk("control_if_else",
+        inputs={"CONDITION": [2, cond_gt6], "SUBSTACK": [2, set_k2], "SUBSTACK2": [2, set_kind_one]})
+    bs[cond_gt6]["parent"] = if_gt6
+    bs[set_k2]["parent"] = if_gt6
+    bs[set_kind_one]["parent"] = if_gt6
+
+    # outer branch: set 표적종류 = 3
+    set_k3 = gen(); bs[set_k3] = mk("data_setvariableto",
+        inputs={"VALUE": num(3)}, fields={"VARIABLE": ["표적종류", V_TKIND]})
+
+    # outer if-else: if 표적종류 > 9 → set 3; else → inner if-else
+    kv_b = vrep("표적종류", V_TKIND)
+    cond_gt9 = cmp_op("operator_gt", kv_b, 9)
+    if_gt9 = gen(); bs[if_gt9] = mk("control_if_else",
+        inputs={"CONDITION": [2, cond_gt9], "SUBSTACK": [2, set_k3], "SUBSTACK2": [2, if_gt6]})
+    bs[cond_gt9]["parent"] = if_gt9
+    bs[set_k3]["parent"] = if_gt9
+    bs[if_gt6]["parent"] = if_gt9
 
     # 표적방향 = (random 0..1 * 2) - 1 → -1 or 1
     rand_d = op("operator_random", 0, 1, key1="FROM", key2="TO")
@@ -427,15 +422,27 @@ def build_stage_blocks():
         inputs={"VALUE": num(1)}, fields={"VARIABLE": ["스폰수", V_SPAWNED]})
 
     # wait = max(0.5, 1.4 - 라운드 * 0.08)
+    # Scratch has no native max block; implement as if-else on the computed value:
+    #   if (1.4 - 라운드 * 0.08) < 0.5 → wait 0.5
+    #                              else → wait (1.4 - 라운드 * 0.08)
     rv_a = vrep("라운드", V_ROUND)
     mul_rd = op("operator_multiply", rv_a, 0.08)
     sub_rd = op("operator_subtract", 1.4, mul_rd)
-    wt_sp = gen(); bs[wt_sp] = mk("control_wait", inputs={"DURATION": slot(sub_rd)})
-    bs[sub_rd]["parent"] = wt_sp
+    rv_a2 = vrep("라운드", V_ROUND)
+    mul_rd2 = op("operator_multiply", rv_a2, 0.08)
+    sub_rd2 = op("operator_subtract", 1.4, mul_rd2)
+    cond_clamp = cmp_op("operator_lt", sub_rd, 0.5)
+    wt_floor = gen(); bs[wt_floor] = mk("control_wait", inputs={"DURATION": num(0.5)})
+    wt_sp = gen(); bs[wt_sp] = mk("control_wait", inputs={"DURATION": slot(sub_rd2)})
+    bs[sub_rd2]["parent"] = wt_sp
+    if_clamp = gen(); bs[if_clamp] = mk("control_if_else",
+        inputs={"CONDITION": [2, cond_clamp], "SUBSTACK": [2, wt_floor], "SUBSTACK2": [2, wt_sp]})
+    bs[cond_clamp]["parent"] = if_clamp
+    bs[wt_floor]["parent"] = if_clamp
+    bs[wt_sp]["parent"] = if_clamp
 
-    # chain body of if_alive
-    chain([(set_kind_one, bs[set_kind_one]),
-           (if_gt6, bs[if_gt6]),
+    # chain body of if_alive (set_kind draws one random; if_gt9 branches to if_gt6 or set_k3)
+    chain([(set_kind, bs[set_kind]),
            (if_gt9, bs[if_gt9]),
            (set_dir, bs[set_dir]),
            (if_d_zero, bs[if_d_zero]),
@@ -444,12 +451,12 @@ def build_stage_blocks():
            (set_tsy, bs[set_tsy]),
            (bc_sp, bs[bc_sp]),
            (inc_spawned, bs[inc_spawned]),
-           (wt_sp, bs[wt_sp])])
+           (if_clamp, bs[if_clamp])])
 
     if_alive = gen(); bs[if_alive] = mk("control_if",
-        inputs={"CONDITION": [2, cond_both], "SUBSTACK": [2, set_kind_one]})
+        inputs={"CONDITION": [2, cond_both], "SUBSTACK": [2, set_kind]})
     bs[cond_both]["parent"] = if_alive
-    bs[set_kind_one]["parent"] = if_alive
+    bs[set_kind]["parent"] = if_alive
 
     # idle wait outside if
     w_idle = gen(); bs[w_idle] = mk("control_wait", inputs={"DURATION": num(0.1)})
@@ -837,7 +844,24 @@ def build_target_blocks():
     bs[cond_xlo]["parent"] = if_xlo; bs[set_dir_pos]["parent"] = if_xlo
 
     wt_step = gen(); bs[wt_step] = mk("control_wait", inputs={"DURATION": num(0.025)})
-    chain([(chx, bs[chx]), (if_xhi, bs[if_xhi]), (if_xlo, bs[if_xlo]), (wt_step, bs[wt_step])])
+
+    # game-state guard inside patrol loop: if 게임상태 ≠ 1 → 숨기기 + 클론 삭제
+    # not(게임상태 = 1) to detect game-over / restart mid-round
+    gs_v = vrep("게임상태", V_STATE)
+    cond_gs_eq1 = cmp_op("operator_equals", gs_v, 1)
+    guard_not = gen(); bs[guard_not] = mk("operator_not",
+        inputs={"OPERAND": [2, cond_gs_eq1]})
+    bs[cond_gs_eq1]["parent"] = guard_not
+    hi_guard = gen(); bs[hi_guard] = mk("looks_hide")
+    del_guard = gen(); bs[del_guard] = mk("control_delete_this_clone")
+    chain([(hi_guard, bs[hi_guard]), (del_guard, bs[del_guard])])
+    if_guard = gen(); bs[if_guard] = mk("control_if",
+        inputs={"CONDITION": [2, guard_not], "SUBSTACK": [2, hi_guard]})
+    bs[guard_not]["parent"] = if_guard
+    bs[hi_guard]["parent"] = if_guard
+
+    chain([(chx, bs[chx]), (if_xhi, bs[if_xhi]), (if_xlo, bs[if_xlo]),
+           (wt_step, bs[wt_step]), (if_guard, bs[if_guard])])
 
     # repeat until touching 수리검
     tm = gen(); bs[tm] = mk("sensing_touchingobjectmenu",

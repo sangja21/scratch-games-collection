@@ -215,7 +215,7 @@ def build_stage_blocks():
     s_kills = gen(); bs[s_kills] = mk("data_setvariableto",
         inputs={"VALUE": num(0)}, fields={"VARIABLE": ["격추수", V_KILLS]})
     s_total = gen(); bs[s_total] = mk("data_setvariableto",
-        inputs={"VALUE": num(6)}, fields={"VARIABLE": ["라운드미사일수", V_TOTAL]})
+        inputs={"VALUE": num(8)}, fields={"VARIABLE": ["라운드미사일수", V_TOTAL]})
     s_speed = gen(); bs[s_speed] = mk("data_setvariableto",
         inputs={"VALUE": num(1.6)}, fields={"VARIABLE": ["적속도", V_SPEED]})
 
@@ -680,6 +680,21 @@ def build_city_blocks():
         inputs={"TOUCHINGOBJECTMENU":[1, tm]})
     bs[tm]["parent"] = tc
 
+    # costume name reporter to check if already ruined
+    cname = gen(); bs[cname] = mk("looks_costumenumbername",
+        fields={"NUMBER_NAME": ["name", None]})
+    cname_eq = gen(); bs[cname_eq] = mk("operator_equals",
+        inputs={"OPERAND1": slot(cname), "OPERAND2": text_lit("ruined")})
+    bs[cname]["parent"] = cname_eq
+    not_ruined = gen(); bs[not_ruined] = mk("operator_not",
+        inputs={"OPERAND": [2, cname_eq]})
+    bs[cname_eq]["parent"] = not_ruined
+    # combined: touching AND not ruined
+    guard = gen(); bs[guard] = mk("operator_and",
+        inputs={"OPERAND1": [2, tc], "OPERAND2": [2, not_ruined]})
+    bs[tc]["parent"] = guard
+    bs[not_ruined]["parent"] = guard
+
     cmenu3 = gen(); bs[cmenu3] = mk("looks_costume",
         fields={"COSTUME": ["ruined", None]}, shadow=True)
     swc3 = gen(); bs[swc3] = mk("looks_switchcostumeto",
@@ -688,8 +703,8 @@ def build_city_blocks():
     chain([(swc3, bs[swc3])])
 
     if_hit = gen(); bs[if_hit] = mk("control_if",
-        inputs={"CONDITION":[2, tc], "SUBSTACK":[2, swc3]})
-    bs[tc]["parent"] = if_hit
+        inputs={"CONDITION":[2, guard], "SUBSTACK":[2, swc3]})
+    bs[guard]["parent"] = if_hit
     bs[swc3]["parent"] = if_hit
 
     wt_iter = gen(); bs[wt_iter] = mk("control_wait", inputs={"DURATION": num(0.08)})
@@ -798,9 +813,6 @@ def main():
             V_EX:    ["폭발X", 0],
             V_EY:    ["폭발Y", 0],
             V_TX:    ["목표X", 0],
-            V_SX0:   ["미사일시작X", 0],
-            V_DX:    ["dx", 0],
-            V_DY:    ["dy", 0],
         },
         "lists": {},
         "broadcasts": {
@@ -856,7 +868,11 @@ def main():
 
     missile = {
         "isStage": False, "name": "적미사일",
-        "variables": {},
+        "variables": {
+            V_SX0: ["미사일시작X", 0],
+            V_DX:  ["dx", 0],
+            V_DY:  ["dy", 0],
+        },
         "lists": {}, "broadcasts": {},
         "blocks": missile_blocks, "comments": {},
         "currentCostume": 0,
