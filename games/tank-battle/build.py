@@ -493,7 +493,7 @@ def build_player_blocks():
     h = gen(); bs[h] = mk("event_whenflagclicked", top=True, x=20, y=20)
     show = gen(); bs[show] = mk("looks_show")
     sz = gen(); bs[sz] = mk("looks_setsizeto", inputs={"SIZE": num(75)})
-    g0 = gen(); bs[g0] = mk("motion_gotoxy", inputs={"X": num(0), "Y": num(-120)})
+    g0 = gen(); bs[g0] = mk("motion_gotoxy", inputs={"X": num(0), "Y": num(0)})
     rs = gen(); bs[rs] = mk("motion_setrotationstyle",
         fields={"STYLE": ["all around", None]})
     pd = gen(); bs[pd] = mk("motion_pointindirection", inputs={"DIRECTION": num(0)})
@@ -768,7 +768,9 @@ def build_shell_blocks():
 
     show = gen(); bs[show] = mk("looks_show")
 
-    # repeat until OOB OR touching 적탱크/엄폐물/플레이어탱크
+    # repeat until OOB OR touching 적탱크/엄폐물
+    # (플레이어탱크 excluded: player bullets spawn at player center and would
+    #  immediately self-destruct; player damage is handled by player's own watcher)
     mv = gen(); bs[mv] = mk("motion_movesteps", inputs={"STEPS": num(10)})
     w_iter = gen(); bs[w_iter] = mk("control_wait", inputs={"DURATION": num(0.02)})
     chain([(mv, bs[mv]), (w_iter, bs[w_iter])])
@@ -799,15 +801,8 @@ def build_shell_blocks():
         inputs={"TOUCHINGOBJECTMENU": [1, tm_c]})
     bs[tm_c]["parent"] = tc_c
 
-    tm_p = gen(); bs[tm_p] = mk("sensing_touchingobjectmenu",
-        fields={"TOUCHINGOBJECTMENU": ["플레이어탱크", None]}, shadow=True)
-    tc_p = gen(); bs[tc_p] = mk("sensing_touchingobject",
-        inputs={"TOUCHINGOBJECTMENU": [1, tm_p]})
-    bs[tm_p]["parent"] = tc_p
-
     c_ec = bool_op("operator_or", tc_e, tc_c)
-    c_ecp = bool_op("operator_or", c_ec, tc_p)
-    c_stop = bool_op("operator_or", c_oob, c_ecp)
+    c_stop = bool_op("operator_or", c_oob, c_ec)
 
     rep_until = gen(); bs[rep_until] = mk("control_repeat_until",
         inputs={"CONDITION": [2, c_stop], "SUBSTACK": [2, mv]})
@@ -857,15 +852,17 @@ def build_enemy_blocks():
     show = gen(); bs[show] = mk("looks_show")
 
     # forever body
-    # check collision with shell — use touching only, no 포탄종류 check to avoid
-    # race condition where multiple enemy clones overwrite the shared V_BKIND variable.
-    # Enemy shells travel away from the firing tank so brief self-touch is negligible.
+    # enemy dies when touched by a PLAYER bullet (포탄종류=0).
+    # Kind check is essential: enemies fire bullets that spawn at their own position,
+    # so without the check enemies would kill themselves the moment they fire.
     tm_b = gen(); bs[tm_b] = mk("sensing_touchingobjectmenu",
         fields={"TOUCHINGOBJECTMENU": ["포탄", None]}, shadow=True)
     tc_b = gen(); bs[tc_b] = mk("sensing_touchingobject",
         inputs={"TOUCHINGOBJECTMENU": [1, tm_b]})
     bs[tm_b]["parent"] = tc_b
-    cond_killed = tc_b
+    bkind_v = vrep("포탄종류", V_BKIND)
+    cond_pk = cmp_op("operator_equals", bkind_v, 0)
+    cond_killed = bool_op("operator_and", tc_b, cond_pk)
 
     inc_score = gen(); bs[inc_score] = mk("data_changevariableby",
         inputs={"VALUE": num(20)}, fields={"VARIABLE": ["점수", V_SCORE]})
