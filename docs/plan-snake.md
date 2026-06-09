@@ -419,13 +419,13 @@ assets/ 폴더: `pop.wav` 하나. 나머지 SVG 는 build.py 인라인.
 
 - **격자 스냅 이동 + 키 입력**: `games/car-race/build.py` — 차선 스냅(`set x to ...`) 대신 `change x/y by ±16`. car-race 의 `wait until NOT key` 대신 여기선 "다음방향 예약 + 스텝에서 1회 적용" 으로 1스텝 1회전 보장(역방향 차단 가드 포함).
 - **클론 풀 + 스폰 직전 글로벌 set → create clone → 클론 로컬 복사**: `games/car-race/build.py`(적차 색상/속도) / `games/meteor-dodge` 패턴. 여기선 `세그발급` 카운터를 1 올리고 `create clone` → 클론이 `세그번호` 로 복사.
-- **리스트 insert/delete/item-of**: `games/duck-hunt/build.py` 등 lists 필드는 빈 dict 였으나, Stage 의 `lists` 딕셔너리에 `L_trailX01`/`L_trailY02` 등록 + `data_addtolist`/`data_insertatindex`/`data_deleteoflist`/`data_itemoflist`/`data_lengthoflist` 블록 사용. (리스트를 실제 쓰는 첫 게임이므로 블록 opcode 매핑을 build.py 에 새로 추가해야 함 — 아래 opcode 표 참조.)
+- **리스트 insert/delete/item-of**: `games/duck-hunt/build.py` 등 lists 필드는 빈 dict 였으나, Stage 의 `lists` 딕셔너리에 `L_trailX01`/`L_trailY02` 등록 + `data_addtolist`/`data_insertatlist`/`data_deleteoflist`/`data_itemoflist`/`data_lengthoflist` 블록 사용. (리스트를 실제 쓰는 첫 게임이므로 블록 opcode 매핑을 build.py 에 새로 추가해야 함 — 아래 opcode 표 참조.)
 - **이벤트 기반 점수 +1**: `games/flappy-bird/build.py`(파이프 통과 +1) 패턴 → 여기선 사과 먹을 때 +1.
 - **게임오버 배너 + 깃발 재시작**: car-race/flappy-bird 그대로.
 
 **필요한 리스트 블록 opcode (빌더가 새로 매핑)**:
 - `data_addtolist` (ITEM, LIST)
-- `data_insertatindex` (ITEM, INDEX, LIST) — 머리 궤적 맨 앞 insert (INDEX=1)
+- `data_insertatlist` (ITEM, INDEX, LIST) — 머리 궤적 맨 앞 insert (INDEX=1)
 - `data_deleteoflist` (INDEX, LIST) — "last" 인덱스
 - `data_deletealloflist` (LIST)
 - `data_itemoflist` (INDEX, LIST) — 꼬리 위치 읽기
@@ -445,7 +445,7 @@ assets/ 폴더: `pop.wav` 하나. 나머지 SVG 는 build.py 인라인.
 6. Broadcasts: 게임시작 / 스텝 / 사과배치 3개
 7. 머리 sprite 의 `when receive 스텝` 트리에:
    - `motion_changexby`/`motion_changeyby` ±16 분기(방향 1~4) 존재
-   - `data_insertatindex`(궤적X, INDEX 1) + (궤적Y) 존재
+   - `data_insertatlist`(궤적X, INDEX 1) + (궤적Y) 존재
    - `data_deleteoflist`(last) 트림 + `data_lengthoflist` 조건 존재
    - 벽 충돌 OR 조건 4개(머리X/Y 경계) 존재
    - `sensing_touchingobject`("꼬리") 자기충돌 + `data_setvariableto`(게임상태,0) 존재

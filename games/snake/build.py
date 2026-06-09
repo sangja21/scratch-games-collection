@@ -4,7 +4,7 @@
 베이스: games/car-race/build.py (격자 스냅 이동 + 키 입력 + 클론 풀 + 게임상태 broadcast)
       + games/flappy-bird/build.py (이벤트 기반 점수 +1, 게임오버 배너).
 
-리스트 블록(data_insertatindex/data_itemoflist/data_deleteoflist/
+리스트 블록(data_insertatlist/data_itemoflist/data_deleteoflist/
 data_lengthoflist/data_deletealloflist)을 쓰는 첫 게임. 꼬리는 머리가 지나온
 좌표를 궤적X/궤적Y 리스트에 기록하고, 각 꼬리 세그먼트 클론이 자기 순번만큼
 지연된 과거 좌표를 읽어 머리를 따라간다.
@@ -50,29 +50,31 @@ __TILES__
   <rect x="16" y="20" width="448" height="320" fill="none" stroke="#2E7D32" stroke-width="2"/>
 </svg>""".replace("__TILES__", _board_tiles())
 
-# -------- Snake head: 둥근 진녹색 사각 + 눈 2개 + 빨간 혀 (16x16) --------
+# -------- Snake head: 둥근 빨간 사각 + 눈 2개 + 노란 혀 (16x16) --------
+# 보드가 녹색이므로 뱀은 빨강 계열로 대비를 준다.
 HEAD_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
-  <rect x="0.5" y="0.5" width="15" height="15" rx="4" fill="#1B5E20" stroke="#0B3D0B" stroke-width="1"/>
+  <rect x="0.5" y="0.5" width="15" height="15" rx="4" fill="#D32F2F" stroke="#7F0000" stroke-width="1"/>
   <!-- eyes -->
   <circle cx="5" cy="5.5" r="2.2" fill="#FFFFFF"/>
   <circle cx="11" cy="5.5" r="2.2" fill="#FFFFFF"/>
   <circle cx="5.4" cy="5.5" r="1.0" fill="#111111"/>
   <circle cx="11.4" cy="5.5" r="1.0" fill="#111111"/>
-  <!-- tongue -->
-  <rect x="7" y="11.5" width="2" height="4" rx="1" fill="#E53935"/>
-  <rect x="6" y="14" width="4" height="1.6" rx="0.8" fill="#E53935"/>
+  <!-- tongue (노랑: 빨간 머리 위에서도 보이게) -->
+  <rect x="7" y="11.5" width="2" height="4" rx="1" fill="#FFEB3B"/>
+  <rect x="6" y="14" width="4" height="1.6" rx="0.8" fill="#FFEB3B"/>
 </svg>"""
 
-# -------- Snake tail segment: 둥근 옅은 녹색 사각 (16x16) --------
+# -------- Snake tail segment: 둥근 옅은 빨간 사각 (16x16) --------
 TAIL_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
-  <rect x="1" y="1" width="14" height="14" rx="4" fill="#43A047" stroke="#1B5E20" stroke-width="1.2"/>
-  <rect x="4.5" y="4.5" width="7" height="7" rx="2" fill="#66BB6A"/>
+  <rect x="1" y="1" width="14" height="14" rx="4" fill="#E53935" stroke="#7F0000" stroke-width="1.2"/>
+  <rect x="4.5" y="4.5" width="7" height="7" rx="2" fill="#FF8A80"/>
 </svg>"""
 
-# -------- Apple: 빨간 원 + 갈색 꼭지 + 초록 잎 (16x16) --------
+# -------- Apple: 황금 원 + 갈색 꼭지 + 초록 잎 (16x16) --------
+# 뱀이 빨강이 되었으므로 사과는 황금색으로 바꿔 뱀과 구분되게 한다.
 APPLE_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
-  <circle cx="8" cy="9.5" r="6" fill="#E53935" stroke="#B71C1C" stroke-width="1"/>
-  <ellipse cx="6" cy="7.5" rx="2" ry="1.4" fill="#FF8A80" opacity="0.8"/>
+  <circle cx="8" cy="9.5" r="6" fill="#FFC107" stroke="#FF8F00" stroke-width="1"/>
+  <ellipse cx="6" cy="7.5" rx="2" ry="1.4" fill="#FFE082" opacity="0.9"/>
   <rect x="7.4" y="1.5" width="1.4" height="4" rx="0.7" fill="#6D4C41"/>
   <path d="M9 3 Q13 1 12.5 4.5 Q9.5 5 9 3 Z" fill="#2E7D32"/>
 </svg>"""
@@ -81,9 +83,9 @@ APPLE_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" vi
 GAME_OVER_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="360" height="170" viewBox="0 0 360 170">
   <rect x="5" y="5" width="350" height="160" rx="14"
         fill="#000000" opacity="0.92"
-        stroke="#43A047" stroke-width="4"/>
+        stroke="#E53935" stroke-width="4"/>
   <text x="180" y="68" text-anchor="middle"
-        fill="#66BB6A" font-family="Arial, Helvetica, sans-serif"
+        fill="#FF5252" font-family="Arial, Helvetica, sans-serif"
         font-size="44" font-weight="bold">GAME OVER</text>
   <text x="180" y="104" text-anchor="middle"
         fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif"
@@ -156,7 +158,7 @@ def make_helpers(bs):
 
 # ---- list block helpers (snake 가 처음 도입) ----
 # data_addtolist        : inputs ITEM ; fields LIST [name, id]
-# data_insertatindex    : inputs ITEM, INDEX ; fields LIST
+# data_insertatlist     : inputs ITEM, INDEX ; fields LIST
 # data_deleteoflist     : inputs INDEX ; fields LIST
 # data_deletealloflist  : fields LIST
 # data_itemoflist       : inputs INDEX ; fields LIST  (reporter)
@@ -182,7 +184,7 @@ def make_list_helpers(bs):
             "ITEM":  slot(item) if isinstance(item, str) else text_lit(item),
             "INDEX": slot(index) if isinstance(index, str) else text_lit(index),
         }
-        bs[bid] = mk("data_insertatindex", inputs=ins, fields={"LIST": [name, lid]})
+        bs[bid] = mk("data_insertatlist", inputs=ins, fields={"LIST": [name, lid]})
         if isinstance(item, str):  bs[item]["parent"] = bid
         if isinstance(index, str): bs[index]["parent"] = bid
         return bid
@@ -761,38 +763,48 @@ def build_apple_blocks():
     sh = gen(); bs[sh] = mk("looks_show")
     chain([(h,bs[h]),(sz,bs[sz]),(cm,bs[cm]),(sh,bs[sh])])
 
-    # === when receive 사과배치: show + repeat until (빈 칸) ===
+    # === when receive 사과배치: show + 랜덤배치 1회 + repeat until (빈 칸) 재배치 ===
+    # 주의: repeat-until-empty 만 쓰면 첫 호출 때 사과가 (0,0) 에서 아무것과도
+    #       안 겹쳐 루프 몸체(랜덤배치)가 한 번도 안 돌아 (0,0) 에 고정됨.
+    #       (0,0) 은 머리 격자(≡8 mod16) 밖이라 영영 못 먹음.  그래서 무조건
+    #       1회 랜덤배치한 뒤, 겹치면 다시 굴리는 repeat-until 로 재배치한다.
     h2 = gen(); bs[h2] = mk("event_whenbroadcastreceived", top=True, x=20, y=180,
         fields={"BROADCAST_OPTION": ["사과배치", BR_APPLE]})
     show2 = gen(); bs[show2] = mk("looks_show")
 
-    # 사과X = (random 0..27)*16 - 216
-    rc = gen(); bs[rc] = mk("operator_random", inputs={"FROM": num(0), "TO": num(27)})
-    mul_c = op("operator_multiply", rc, 16)
-    sub_c = gen(); bs[sub_c] = mk("operator_subtract",
-        inputs={"NUM1": slot(mul_c), "NUM2": num(216)})
-    bs[mul_c]["parent"] = sub_c
-    set_ax = gen(); bs[set_ax] = mk("data_setvariableto",
-        inputs={"VALUE": slot(sub_c)}, fields={"VARIABLE": ["사과X", V_APPLEX]})
-    bs[sub_c]["parent"] = set_ax
+    # 랜덤 배치 시퀀스 1세트(set 사과X / set 사과Y / goto)를 만들어 (first,last) 반환.
+    # Scratch 블록은 재사용 불가하므로 무조건배치/재배치 루프용으로 두 번 생성한다.
+    def make_place_seq():
+        rc = gen(); bs[rc] = mk("operator_random", inputs={"FROM": num(0), "TO": num(27)})
+        mul_c = op("operator_multiply", rc, 16)
+        sub_c = gen(); bs[sub_c] = mk("operator_subtract",
+            inputs={"NUM1": slot(mul_c), "NUM2": num(216)})
+        bs[mul_c]["parent"] = sub_c
+        set_ax = gen(); bs[set_ax] = mk("data_setvariableto",
+            inputs={"VALUE": slot(sub_c)}, fields={"VARIABLE": ["사과X", V_APPLEX]})
+        bs[sub_c]["parent"] = set_ax
 
-    # 사과Y = (random 0..19)*16 - 152
-    rr = gen(); bs[rr] = mk("operator_random", inputs={"FROM": num(0), "TO": num(19)})
-    mul_r = op("operator_multiply", rr, 16)
-    sub_r = gen(); bs[sub_r] = mk("operator_subtract",
-        inputs={"NUM1": slot(mul_r), "NUM2": num(152)})
-    bs[mul_r]["parent"] = sub_r
-    set_ay = gen(); bs[set_ay] = mk("data_setvariableto",
-        inputs={"VALUE": slot(sub_r)}, fields={"VARIABLE": ["사과Y", V_APPLEY]})
-    bs[sub_r]["parent"] = set_ay
+        rr = gen(); bs[rr] = mk("operator_random", inputs={"FROM": num(0), "TO": num(19)})
+        mul_r = op("operator_multiply", rr, 16)
+        sub_r = gen(); bs[sub_r] = mk("operator_subtract",
+            inputs={"NUM1": slot(mul_r), "NUM2": num(152)})
+        bs[mul_r]["parent"] = sub_r
+        set_ay = gen(); bs[set_ay] = mk("data_setvariableto",
+            inputs={"VALUE": slot(sub_r)}, fields={"VARIABLE": ["사과Y", V_APPLEY]})
+        bs[sub_r]["parent"] = set_ay
 
-    # goto (사과X, 사과Y)
-    ax_v = vrep("사과X", V_APPLEX); ay_v = vrep("사과Y", V_APPLEY)
-    g = gen(); bs[g] = mk("motion_gotoxy",
-        inputs={"X": slot(ax_v), "Y": slot(ay_v)})
-    bs[ax_v]["parent"] = g; bs[ay_v]["parent"] = g
+        ax_v = vrep("사과X", V_APPLEX); ay_v = vrep("사과Y", V_APPLEY)
+        g = gen(); bs[g] = mk("motion_gotoxy",
+            inputs={"X": slot(ax_v), "Y": slot(ay_v)})
+        bs[ax_v]["parent"] = g; bs[ay_v]["parent"] = g
 
-    chain([(set_ax,bs[set_ax]),(set_ay,bs[set_ay]),(g,bs[g])])
+        chain([(set_ax,bs[set_ax]),(set_ay,bs[set_ay]),(g,bs[g])])
+        return set_ax, g
+
+    # 무조건 1회 랜덤 배치
+    place1_first, place1_last = make_place_seq()
+    # 재배치용(루프 몸체)
+    place2_first, place2_last = make_place_seq()
 
     # 조건: NOT touching 머리 AND NOT touching 꼬리
     tmh = gen(); bs[tmh] = mk("sensing_touchingobjectmenu",
@@ -814,11 +826,15 @@ def build_apple_blocks():
     cond_empty = bool_op("operator_and", not_h, not_t)
 
     rep_place = gen(); bs[rep_place] = mk("control_repeat_until",
-        inputs={"CONDITION":[2,cond_empty], "SUBSTACK":[2,set_ax]})
+        inputs={"CONDITION":[2,cond_empty], "SUBSTACK":[2,place2_first]})
     bs[cond_empty]["parent"] = rep_place
-    bs[set_ax]["parent"] = rep_place
+    bs[place2_first]["parent"] = rep_place
 
-    chain([(h2,bs[h2]),(show2,bs[show2]),(rep_place,bs[rep_place])])
+    # h2 → show2 → place1(무조건 배치) → rep_place(겹치면 재배치)
+    # place1_first 의 내부 next(→set_ay)를 덮어쓰지 않도록 chain 에 넣지 않고 수동 연결.
+    chain([(h2,bs[h2]),(show2,bs[show2])])
+    bs[show2]["next"] = place1_first; bs[place1_first]["parent"] = show2
+    bs[place1_last]["next"] = rep_place; bs[rep_place]["parent"] = place1_last
 
     return bs
 
