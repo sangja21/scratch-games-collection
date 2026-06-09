@@ -125,6 +125,15 @@ SHELL_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="20" vi
   <polygon points="5,4 11,4 8,0" fill="#263238" stroke="#000000" stroke-width="1"/>
 </svg>"""
 
+# -------- Enemy shell (red, distinct sprite so it never self-destructs on its
+#          firing tank and never gets confused with player shells) --------
+SHELL_ENEMY_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="20" viewBox="0 0 16 20">
+  <ellipse cx="8" cy="17" rx="3" ry="2" fill="#FF7043" opacity="0.85"/>
+  <ellipse cx="8" cy="18" rx="2" ry="1.2" fill="#FFAB91" opacity="0.95"/>
+  <rect x="5" y="4" width="6" height="10" rx="1.5" fill="#B71C1C" stroke="#3E0000" stroke-width="1"/>
+  <polygon points="5,4 11,4 8,0" fill="#7F0000" stroke="#3E0000" stroke-width="1"/>
+</svg>"""
+
 # -------- Cover block (stone wall 50x50) --------
 COVER_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 50 50">
   <rect x="2" y="2" width="46" height="46" rx="3" fill="#9E9E9E" stroke="#424242" stroke-width="2"/>
@@ -202,6 +211,11 @@ V_BDIR  = "varBDir11"
 V_BKIND = "varBKind12"
 V_INV   = "varInv13"
 V_CD    = "varCD14"
+# sprite-local "복제됨" 플래그 (원본=0, 클론=1) — 클론이 클론생성 방송을 받아도
+# 다시 클론을 만들지 않게 가드. 안 그러면 적/엄폐물/적포탄이 기하급수로 증식.
+V_EISC  = "varEnemyIsClone15"   # 적탱크 local
+V_CVISC = "varCoverIsClone16"   # 엄폐물 local
+V_ESISC = "varEShellIsClone17"  # 적포탄 local
 
 BR_START   = "brStart01"
 BR_ROUND   = "brRound02"
@@ -642,9 +656,6 @@ def build_player_blocks():
         inputs={"VALUE": slot(dir_s)}, fields={"VARIABLE": ["포탄방향", V_BDIR]})
     bs[dir_s]["parent"] = set_bdir
 
-    set_bkind = gen(); bs[set_bkind] = mk("data_setvariableto",
-        inputs={"VALUE": num(0)}, fields={"VARIABLE": ["포탄종류", V_BKIND]})
-
     pitch_fire = gen(); bs[pitch_fire] = mk("sound_seteffectto",
         inputs={"VALUE": num(100)}, fields={"EFFECT": ["PITCH", None]})
     snm_fire = gen(); bs[snm_fire] = mk("sound_sounds_menu",
@@ -661,14 +672,12 @@ def build_player_blocks():
 
     set_cd = gen(); bs[set_cd] = mk("data_setvariableto",
         inputs={"VALUE": num(12)}, fields={"VARIABLE": ["쿨다운", V_CD]})
-    set_inv = gen(); bs[set_inv] = mk("data_setvariableto",
-        inputs={"VALUE": num(4)}, fields={"VARIABLE": ["무적", V_INV]})
 
     chain([(set_bx, bs[set_bx]), (set_by, bs[set_by]),
-           (set_bdir, bs[set_bdir]), (set_bkind, bs[set_bkind]),
+           (set_bdir, bs[set_bdir]),
            (pitch_fire, bs[pitch_fire]), (snd_fire, bs[snd_fire]),
            (cclone, bs[cclone]),
-           (set_cd, bs[set_cd]), (set_inv, bs[set_inv])])
+           (set_cd, bs[set_cd])])
 
     if_fire = gen(); bs[if_fire] = mk("control_if",
         inputs={"CONDITION": [2, cond_can_fire], "SUBSTACK": [2, set_bx]})
@@ -684,11 +693,11 @@ def build_player_blocks():
 
     chain([(h2, bs[h2]), (fe_fire, bs[fe_fire])])
 
-    # --- damage watcher: touching 포탄 AND 무적=0 → HP -1 ---
+    # --- damage watcher: touching 적포탄 AND 무적=0 → HP -1 ---
     h3 = gen(); bs[h3] = mk("event_whenflagclicked", top=True, x=800, y=20)
 
     tm_b = gen(); bs[tm_b] = mk("sensing_touchingobjectmenu",
-        fields={"TOUCHINGOBJECTMENU": ["포탄", None]}, shadow=True)
+        fields={"TOUCHINGOBJECTMENU": ["적포탄", None]}, shadow=True)
     tc_b = gen(); bs[tc_b] = mk("sensing_touchingobject",
         inputs={"TOUCHINGOBJECTMENU": [1, tm_b]})
     bs[tm_b]["parent"] = tc_b
@@ -830,9 +839,11 @@ def build_enemy_blocks():
     sz = gen(); bs[sz] = mk("looks_setsizeto", inputs={"SIZE": num(75)})
     rs = gen(); bs[rs] = mk("motion_setrotationstyle",
         fields={"STYLE": ["all around", None]})
-    chain([(h, bs[h]), (hi, bs[hi]), (sz, bs[sz]), (rs, bs[rs])])
+    orig0 = gen(); bs[orig0] = mk("data_setvariableto",
+        inputs={"VALUE": num(0)}, fields={"VARIABLE": ["복제됨", V_EISC]})
+    chain([(h, bs[h]), (hi, bs[hi]), (sz, bs[sz]), (rs, bs[rs]), (orig0, bs[orig0])])
 
-    # on 적스폰 → create clone
+    # on 적스폰 → (원본만) create clone
     h2 = gen(); bs[h2] = mk("event_whenbroadcastreceived", top=True, x=20, y=200,
         fields={"BROADCAST_OPTION": ["적스폰", BR_ESPAWN]})
     cmenu = gen(); bs[cmenu] = mk("control_create_clone_of_menu",
@@ -840,10 +851,16 @@ def build_enemy_blocks():
     cclone = gen(); bs[cclone] = mk("control_create_clone_of",
         inputs={"CLONE_OPTION": [1, cmenu]})
     bs[cmenu]["parent"] = cclone
-    chain([(h2, bs[h2]), (cclone, bs[cclone])])
+    isc0 = cmp_op("operator_equals", vrep("복제됨", V_EISC), 0)
+    if_spawn = gen(); bs[if_spawn] = mk("control_if",
+        inputs={"CONDITION": [2, isc0], "SUBSTACK": [2, cclone]})
+    bs[isc0]["parent"] = if_spawn; bs[cclone]["parent"] = if_spawn
+    chain([(h2, bs[h2]), (if_spawn, bs[if_spawn])])
 
     # clone start
     ch = gen(); bs[ch] = mk("control_start_as_clone", top=True, x=400, y=20)
+    set_isc1 = gen(); bs[set_isc1] = mk("data_setvariableto",
+        inputs={"VALUE": num(1)}, fields={"VARIABLE": ["복제됨", V_EISC]})
     sx_v = vrep("스폰X", V_SX); sy_v = vrep("스폰Y", V_SY)
     g = gen(); bs[g] = mk("motion_gotoxy",
         inputs={"X": slot(sx_v), "Y": slot(sy_v)})
@@ -852,17 +869,14 @@ def build_enemy_blocks():
     show = gen(); bs[show] = mk("looks_show")
 
     # forever body
-    # enemy dies when touched by a PLAYER bullet (포탄종류=0).
-    # Kind check is essential: enemies fire bullets that spawn at their own position,
-    # so without the check enemies would kill themselves the moment they fire.
+    # enemy dies when touched by a PLAYER bullet (포탄 sprite). 적 포탄은 별도 스프라이트
+    # '적포탄' 이므로 자기 포탄에 맞아 죽을 일이 없다 — 종류 구분(전역) 불필요.
     tm_b = gen(); bs[tm_b] = mk("sensing_touchingobjectmenu",
         fields={"TOUCHINGOBJECTMENU": ["포탄", None]}, shadow=True)
     tc_b = gen(); bs[tc_b] = mk("sensing_touchingobject",
         inputs={"TOUCHINGOBJECTMENU": [1, tm_b]})
     bs[tm_b]["parent"] = tc_b
-    bkind_v = vrep("포탄종류", V_BKIND)
-    cond_pk = cmp_op("operator_equals", bkind_v, 0)
-    cond_killed = bool_op("operator_and", tc_b, cond_pk)
+    cond_killed = tc_b
 
     inc_score = gen(); bs[inc_score] = mk("data_changevariableby",
         inputs={"VALUE": num(20)}, fields={"VARIABLE": ["점수", V_SCORE]})
@@ -965,8 +979,6 @@ def build_enemy_blocks():
     set_bdire = gen(); bs[set_bdire] = mk("data_setvariableto",
         inputs={"VALUE": slot(dire)}, fields={"VARIABLE": ["포탄방향", V_BDIR]})
     bs[dire]["parent"] = set_bdire
-    set_bke = gen(); bs[set_bke] = mk("data_setvariableto",
-        inputs={"VALUE": num(1)}, fields={"VARIABLE": ["포탄종류", V_BKIND]})
 
     pitch_ef = gen(); bs[pitch_ef] = mk("sound_seteffectto",
         inputs={"VALUE": num(-100)}, fields={"EFFECT": ["PITCH", None]})
@@ -983,7 +995,7 @@ def build_enemy_blocks():
     bs[bm_ef]["parent"] = bc_ef
 
     chain([(set_bxe, bs[set_bxe]), (set_bye, bs[set_bye]),
-           (set_bdire, bs[set_bdire]), (set_bke, bs[set_bke]),
+           (set_bdire, bs[set_bdire]),
            (pitch_ef, bs[pitch_ef]), (snd_ef, bs[snd_ef]),
            (bc_ef, bs[bc_ef])])
 
@@ -1005,7 +1017,7 @@ def build_enemy_blocks():
         inputs={"SUBSTACK": [2, if_killed]})
     bs[if_killed]["parent"] = fe_body
 
-    chain([(ch, bs[ch]), (g, bs[g]), (pd0, bs[pd0]),
+    chain([(ch, bs[ch]), (set_isc1, bs[set_isc1]), (g, bs[g]), (pd0, bs[pd0]),
            (show, bs[show]), (fe_body, bs[fe_body])])
 
     return bs
@@ -1020,7 +1032,9 @@ def build_cover_blocks():
     h = gen(); bs[h] = mk("event_whenflagclicked", top=True, x=20, y=20)
     hi = gen(); bs[hi] = mk("looks_hide")
     sz = gen(); bs[sz] = mk("looks_setsizeto", inputs={"SIZE": num(80)})
-    chain([(h, bs[h]), (hi, bs[hi]), (sz, bs[sz])])
+    orig0 = gen(); bs[orig0] = mk("data_setvariableto",
+        inputs={"VALUE": num(0)}, fields={"VARIABLE": ["복제됨", V_CVISC]})
+    chain([(h, bs[h]), (hi, bs[hi]), (sz, bs[sz]), (orig0, bs[orig0])])
 
     # on 엄폐물제거 → delete this clone (clears all cover clones before round restart)
     h_clr = gen(); bs[h_clr] = mk("event_whenbroadcastreceived", top=True, x=400, y=200,
@@ -1028,7 +1042,7 @@ def build_cover_blocks():
     del_clr = gen(); bs[del_clr] = mk("control_delete_this_clone")
     chain([(h_clr, bs[h_clr]), (del_clr, bs[del_clr])])
 
-    # on 엄폐물생성 → create clone
+    # on 엄폐물생성 → (원본만) create clone
     h2 = gen(); bs[h2] = mk("event_whenbroadcastreceived", top=True, x=20, y=200,
         fields={"BROADCAST_OPTION": ["엄폐물생성", BR_COVER]})
     cmenu = gen(); bs[cmenu] = mk("control_create_clone_of_menu",
@@ -1036,10 +1050,16 @@ def build_cover_blocks():
     cclone = gen(); bs[cclone] = mk("control_create_clone_of",
         inputs={"CLONE_OPTION": [1, cmenu]})
     bs[cmenu]["parent"] = cclone
-    chain([(h2, bs[h2]), (cclone, bs[cclone])])
+    isc0 = cmp_op("operator_equals", vrep("복제됨", V_CVISC), 0)
+    if_spawn = gen(); bs[if_spawn] = mk("control_if",
+        inputs={"CONDITION": [2, isc0], "SUBSTACK": [2, cclone]})
+    bs[isc0]["parent"] = if_spawn; bs[cclone]["parent"] = if_spawn
+    chain([(h2, bs[h2]), (if_spawn, bs[if_spawn])])
 
     # clone start
     ch = gen(); bs[ch] = mk("control_start_as_clone", top=True, x=400, y=20)
+    set_isc1 = gen(); bs[set_isc1] = mk("data_setvariableto",
+        inputs={"VALUE": num(1)}, fields={"VARIABLE": ["복제됨", V_CVISC]})
     sx_v = vrep("스폰X", V_SX); sy_v = vrep("스폰Y", V_SY)
     g = gen(); bs[g] = mk("motion_gotoxy",
         inputs={"X": slot(sx_v), "Y": slot(sy_v)})
@@ -1078,26 +1098,90 @@ def build_cover_blocks():
         inputs={"SUBSTACK": [2, if_brk]})
     bs[if_brk]["parent"] = fe_body
 
-    chain([(ch, bs[ch]), (g, bs[g]), (show, bs[show]), (fe_body, bs[fe_body])])
+    chain([(ch, bs[ch]), (set_isc1, bs[set_isc1]), (g, bs[g]), (show, bs[show]), (fe_body, bs[fe_body])])
 
     return bs
 
 # ============================================================
-#  enemy fire receiver inside SHELL — handled separately
-#  (shell already handles 'fire' too because its clone start is generic;
-#   the broadcast 사격/적사격 receivers create clones of 포탄)
+#  ENEMY SHELL (별도 스프라이트) — 적사격 방송으로 생성, 자기 탱크 위에서 시작해도
+#  '적탱크' 를 정지조건에 넣지 않으므로 자폭하지 않는다. 플레이어/엄폐물/가장자리에서 소멸.
+#  플레이어 피해는 플레이어의 'touching 적포탄' 와처가 처리.
 # ============================================================
-def build_shell_blocks_with_efire():
-    bs = build_shell_blocks()
-    # add handler: on 적사격 received → create clone of myself
-    h_ef = gen(); bs[h_ef] = mk("event_whenbroadcastreceived", top=True, x=400, y=200,
+def build_enemy_shell_blocks():
+    bs = {}
+    vrep, op, cmp_op, bool_op = make_helpers(bs)
+
+    h = gen(); bs[h] = mk("event_whenflagclicked", top=True, x=20, y=20)
+    hi = gen(); bs[hi] = mk("looks_hide")
+    sz = gen(); bs[sz] = mk("looks_setsizeto", inputs={"SIZE": num(80)})
+    rs = gen(); bs[rs] = mk("motion_setrotationstyle", fields={"STYLE": ["all around", None]})
+    orig0 = gen(); bs[orig0] = mk("data_setvariableto",
+        inputs={"VALUE": num(0)}, fields={"VARIABLE": ["복제됨", V_ESISC]})
+    chain([(h, bs[h]), (hi, bs[hi]), (sz, bs[sz]), (rs, bs[rs]), (orig0, bs[orig0])])
+
+    # on 적사격 → (원본만) create clone
+    h_ef = gen(); bs[h_ef] = mk("event_whenbroadcastreceived", top=True, x=400, y=20,
         fields={"BROADCAST_OPTION": ["적사격", BR_EFIRE]})
     cmenu = gen(); bs[cmenu] = mk("control_create_clone_of_menu",
         fields={"CLONE_OPTION": ["_myself_", None]}, shadow=True)
     cclone = gen(); bs[cclone] = mk("control_create_clone_of",
         inputs={"CLONE_OPTION": [1, cmenu]})
     bs[cmenu]["parent"] = cclone
-    chain([(h_ef, bs[h_ef]), (cclone, bs[cclone])])
+    isc0 = cmp_op("operator_equals", vrep("복제됨", V_ESISC), 0)
+    if_spawn = gen(); bs[if_spawn] = mk("control_if",
+        inputs={"CONDITION": [2, isc0], "SUBSTACK": [2, cclone]})
+    bs[isc0]["parent"] = if_spawn; bs[cclone]["parent"] = if_spawn
+    chain([(h_ef, bs[h_ef]), (if_spawn, bs[if_spawn])])
+
+    # clone start: goto 포탄X/Y, point 포탄방향, fly until edge/엄폐물/플레이어
+    ch = gen(); bs[ch] = mk("control_start_as_clone", top=True, x=20, y=200)
+    set_isc1 = gen(); bs[set_isc1] = mk("data_setvariableto",
+        inputs={"VALUE": num(1)}, fields={"VARIABLE": ["복제됨", V_ESISC]})
+    bx_v = vrep("포탄X", V_BX); by_v = vrep("포탄Y", V_BY)
+    g = gen(); bs[g] = mk("motion_gotoxy", inputs={"X": slot(bx_v), "Y": slot(by_v)})
+    bs[bx_v]["parent"] = g; bs[by_v]["parent"] = g
+    bdir_v = vrep("포탄방향", V_BDIR)
+    point_b = gen(); bs[point_b] = mk("motion_pointindirection", inputs={"DIRECTION": slot(bdir_v)})
+    bs[bdir_v]["parent"] = point_b
+    show = gen(); bs[show] = mk("looks_show")
+
+    mv = gen(); bs[mv] = mk("motion_movesteps", inputs={"STEPS": num(7)})
+    w_iter = gen(); bs[w_iter] = mk("control_wait", inputs={"DURATION": num(0.02)})
+    chain([(mv, bs[mv]), (w_iter, bs[w_iter])])
+
+    xp = gen(); bs[xp] = mk("motion_xposition")
+    cx_hi = cmp_op("operator_gt", xp, 240)
+    xp_b = gen(); bs[xp_b] = mk("motion_xposition")
+    cx_lo = cmp_op("operator_lt", xp_b, -240)
+    cx_out = bool_op("operator_or", cx_hi, cx_lo)
+    yp = gen(); bs[yp] = mk("motion_yposition")
+    cy_hi = cmp_op("operator_gt", yp, 180)
+    yp_b = gen(); bs[yp_b] = mk("motion_yposition")
+    cy_lo = cmp_op("operator_lt", yp_b, -180)
+    cy_out = bool_op("operator_or", cy_hi, cy_lo)
+    c_oob = bool_op("operator_or", cx_out, cy_out)
+
+    tm_p = gen(); bs[tm_p] = mk("sensing_touchingobjectmenu",
+        fields={"TOUCHINGOBJECTMENU": ["플레이어탱크", None]}, shadow=True)
+    tc_p = gen(); bs[tc_p] = mk("sensing_touchingobject", inputs={"TOUCHINGOBJECTMENU": [1, tm_p]})
+    bs[tm_p]["parent"] = tc_p
+    tm_c = gen(); bs[tm_c] = mk("sensing_touchingobjectmenu",
+        fields={"TOUCHINGOBJECTMENU": ["엄폐물", None]}, shadow=True)
+    tc_c = gen(); bs[tc_c] = mk("sensing_touchingobject", inputs={"TOUCHINGOBJECTMENU": [1, tm_c]})
+    bs[tm_c]["parent"] = tc_c
+    c_pc = bool_op("operator_or", tc_p, tc_c)
+    c_stop = bool_op("operator_or", c_oob, c_pc)
+
+    rep_until = gen(); bs[rep_until] = mk("control_repeat_until",
+        inputs={"CONDITION": [2, c_stop], "SUBSTACK": [2, mv]})
+    bs[c_stop]["parent"] = rep_until
+    bs[mv]["parent"] = rep_until
+
+    hi2 = gen(); bs[hi2] = mk("looks_hide")
+    delc = gen(); bs[delc] = mk("control_delete_this_clone")
+    chain([(ch, bs[ch]), (set_isc1, bs[set_isc1]), (g, bs[g]), (point_b, bs[point_b]),
+           (show, bs[show]), (rep_until, bs[rep_until]),
+           (hi2, bs[hi2]), (delc, bs[delc])])
     return bs
 
 # ============================================================
@@ -1146,6 +1230,8 @@ def main():
     with open(f"{WORK}/{te_md5}.svg", "w", encoding="utf-8") as f: f.write(TANK_ENEMY_SVG)
     sh_md5 = md5_bytes(SHELL_SVG.encode("utf-8"))
     with open(f"{WORK}/{sh_md5}.svg", "w", encoding="utf-8") as f: f.write(SHELL_SVG)
+    se_md5 = md5_bytes(SHELL_ENEMY_SVG.encode("utf-8"))
+    with open(f"{WORK}/{se_md5}.svg", "w", encoding="utf-8") as f: f.write(SHELL_ENEMY_SVG)
     cv_md5 = md5_bytes(COVER_SVG.encode("utf-8"))
     with open(f"{WORK}/{cv_md5}.svg", "w", encoding="utf-8") as f: f.write(COVER_SVG)
     go_md5 = md5_bytes(GAME_OVER_SVG.encode("utf-8"))
@@ -1157,7 +1243,8 @@ def main():
 
     stage_blocks    = build_stage_blocks()
     player_blocks   = build_player_blocks()
-    shell_blocks    = build_shell_blocks_with_efire()
+    shell_blocks    = build_shell_blocks()
+    eshell_blocks   = build_enemy_shell_blocks()
     enemy_blocks    = build_enemy_blocks()
     cover_blocks    = build_cover_blocks()
     gameover_blocks = build_gameover_blocks()
@@ -1240,9 +1327,25 @@ def main():
         "draggable": False, "rotationStyle": "all around"
     }
 
+    eshell = {
+        "isStage": False, "name": "적포탄",
+        "variables": {V_ESISC: ["복제됨", 0]}, "lists": {}, "broadcasts": {},
+        "blocks": eshell_blocks, "comments": {},
+        "currentCostume": 0,
+        "costumes": [{
+            "name": "eshell", "bitmapResolution": 1, "dataFormat": "svg",
+            "assetId": se_md5, "md5ext": f"{se_md5}.svg",
+            "rotationCenterX": 8, "rotationCenterY": 10
+        }],
+        "sounds": [pop_sound()],
+        "volume": 100, "layerOrder": 3, "visible": False,
+        "x": 0, "y": 0, "size": 80, "direction": 90,
+        "draggable": False, "rotationStyle": "all around"
+    }
+
     enemy = {
         "isStage": False, "name": "적탱크",
-        "variables": {}, "lists": {}, "broadcasts": {},
+        "variables": {V_EISC: ["복제됨", 0]}, "lists": {}, "broadcasts": {},
         "blocks": enemy_blocks, "comments": {},
         "currentCostume": 0,
         "costumes": [{
@@ -1258,7 +1361,7 @@ def main():
 
     cover = {
         "isStage": False, "name": "엄폐물",
-        "variables": {}, "lists": {}, "broadcasts": {},
+        "variables": {V_CVISC: ["복제됨", 0]}, "lists": {}, "broadcasts": {},
         "blocks": cover_blocks, "comments": {},
         "currentCostume": 0,
         "costumes": [{
@@ -1308,7 +1411,7 @@ def main():
     ]
 
     project = {
-        "targets": [stage, player, shell, enemy, cover, gameover],
+        "targets": [stage, player, shell, eshell, enemy, cover, gameover],
         "monitors": monitors,
         "extensions": [],
         "meta": {"semver": "3.0.0", "vm": "13.7.4-svg",
@@ -1330,10 +1433,11 @@ def main():
     print(f"  stage:    {len(stage_blocks)} blocks")
     print(f"  player:   {len(player_blocks)} blocks")
     print(f"  shell:    {len(shell_blocks)} blocks")
+    print(f"  eshell:   {len(eshell_blocks)} blocks")
     print(f"  enemy:    {len(enemy_blocks)} blocks")
     print(f"  cover:    {len(cover_blocks)} blocks")
     print(f"  gameover: {len(gameover_blocks)} blocks")
-    total = (len(stage_blocks) + len(player_blocks) + len(shell_blocks)
+    total = (len(stage_blocks) + len(player_blocks) + len(shell_blocks) + len(eshell_blocks)
              + len(enemy_blocks) + len(cover_blocks) + len(gameover_blocks))
     print(f"  TOTAL:    {total} blocks")
 
