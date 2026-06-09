@@ -331,7 +331,10 @@ def build_board_blocks():
     chain([(set_col,bs[set_col]),(set_row,bs[set_row]),(if_valid,bs[if_valid])])
     playing = cmp_op("operator_equals", vrep("게임상태",V_STATE), 1)
     if_play = if_(bs, playing, set_col)
-    chain([(hc,bs[hc]),(if_play,bs[if_play])])
+    # 클릭할 때마다 효과음 (유효/무효 클릭 모두)
+    clk_menu = gen(); bs[clk_menu] = mk("sound_sounds_menu", fields={"SOUND_MENU":["click",None]}, shadow=True)
+    clk_play = gen(); bs[clk_play] = mk("sound_play", inputs={"SOUND_MENU":[1,clk_menu]}); bs[clk_menu]["parent"]=clk_play
+    chain([(hc,bs[hc]),(clk_play,bs[clk_play]),(if_play,bs[if_play])])
 
     # ============================================================
     #  when receive 착수 : (행,열,차례) 에 두기 시도 — 빈칸+합법일 때만
@@ -560,7 +563,17 @@ def build_disc_blocks():
     chain([(sw_w,bs[sw_w]),(show_w,bs[show_w])])
     ie_bw = ifelse_(bs, val_is1, sw_b, sw_w)
     ie_draw = ifelse_(bs, val_is0, hide_c, ie_bw)
-    chain([(hd,bs[hd]),(ie_draw,bs[ie_draw])])
+    # 원본 스프라이트(칸번호=0)는 그리지 않음 — 안 그러면 보드[0]="" 가 백 분기로 떨어져
+    # 정중앙에 흰 돌이 보임. 클론(칸번호 1..64)만 렌더.
+    guard = cmp_op("operator_gt", vrep("칸번호",V_CELLNO), 0)
+    if_guard = if_(bs, guard, ie_draw)
+    chain([(hd,bs[hd]),(if_guard,bs[if_guard])])
+
+    # when this sprite clicked: 돌(이미 놓인 칸) 클릭 시에도 효과음
+    hck = gen(); bs[hck] = mk("event_whenthisspriteclicked", top=True, x=320, y=420)
+    dclk_menu = gen(); bs[dclk_menu] = mk("sound_sounds_menu", fields={"SOUND_MENU":["click",None]}, shadow=True)
+    dclk_play = gen(); bs[dclk_play] = mk("sound_play", inputs={"SOUND_MENU":[1,dclk_menu]}); bs[dclk_menu]["parent"]=dclk_play
+    chain([(hck,bs[hck]),(dclk_play,bs[dclk_play])])
 
     return bs
 
@@ -579,6 +592,12 @@ def main():
     board_md5 = wsvg(BOARD_SVG)
     black_md5 = wsvg(DISC_BLACK_SVG)
     white_md5 = wsvg(DISC_WHITE_SVG)
+
+    with open(os.path.join(HERE,"assets","click.wav"),"rb") as f: clk_bytes = f.read()
+    clk_md5 = md5_bytes(clk_bytes)
+    with open(f"{WORK}/{clk_md5}.wav","wb") as f: f.write(clk_bytes)
+    click_sound = lambda: {"name":"click","assetId":clk_md5,"dataFormat":"wav",
+        "format":"","rate":11025,"sampleCount":258,"md5ext":f"{clk_md5}.wav"}
 
     stage = {
         "isStage": True, "name": "Stage",
@@ -613,7 +632,7 @@ def main():
         "costumes": [{"name":"board","bitmapResolution":1,"dataFormat":"svg",
                       "assetId":board_md5,"md5ext":f"{board_md5}.svg",
                       "rotationCenterX":160,"rotationCenterY":160}],
-        "sounds": [], "volume":100, "layerOrder":1, "visible":True,
+        "sounds": [click_sound()], "volume":100, "layerOrder":1, "visible":True,
         "x":0,"y":0,"size":100,"direction":90,"draggable":False,"rotationStyle":"don't rotate"
     }
 
@@ -628,7 +647,7 @@ def main():
             {"name":"백","bitmapResolution":1,"dataFormat":"svg","assetId":white_md5,
              "md5ext":f"{white_md5}.svg","rotationCenterX":20,"rotationCenterY":20},
         ],
-        "sounds": [], "volume":100, "layerOrder":2, "visible":False,
+        "sounds": [click_sound()], "volume":100, "layerOrder":2, "visible":False,
         "x":0,"y":0,"size":100,"direction":90,"draggable":False,"rotationStyle":"don't rotate"
     }
 
