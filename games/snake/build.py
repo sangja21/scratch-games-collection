@@ -232,6 +232,7 @@ V_HEADY   = "varHeadY11"
 V_GAP     = "varGap12"
 V_SEG     = "varSeg13"        # 꼬리 sprite-local (세그번호)
 V_SEGISS  = "varSegIssue14"   # 글로벌 임시 (세그발급)
+V_SEEDX   = "varSeedX15"      # 꼬리 시드 루프용 임시 X 카운터
 
 L_TRAILX  = "L_trailX01"
 L_TRAILY  = "L_trailY02"
@@ -622,18 +623,52 @@ def build_tail_blocks():
     da_x = delete_all("궤적X", L_TRAILX)
     da_y = delete_all("궤적Y", L_TRAILY)
 
-    # 시드: repeat (길이 + 6): insert 머리X at 1 / insert 머리Y at 1
-    len_seed = vrep("길이", V_LEN)
-    plus6 = op("operator_add", len_seed, 6)
-    hx_s = vrep("머리X", V_HEADX)
-    seed_ix = insert_at("궤적X", L_TRAILX, hx_s, 1)
-    hy_s = vrep("머리Y", V_HEADY)
-    seed_iy = insert_at("궤적Y", L_TRAILY, hy_s, 1)
-    chain([(seed_ix, bs[seed_ix]), (seed_iy, bs[seed_iy])])
-    rep_seed = gen(); bs[rep_seed] = mk("control_repeat",
-        inputs={"TIMES": slot(plus6), "SUBSTACK":[2,seed_ix]})
-    bs[plus6]["parent"] = rep_seed
-    bs[seed_ix]["parent"] = rep_seed
+    # 시드: trail[1]=머리X, trail[2..길이+1]=머리X-16*i (뒤로 한 칸씩), trail[길이+2..길이+6]=버퍼
+    # 꼬리가 헤드와 간격을 두고 시작하도록 add-to-list 방식으로 순서대로 삽입.
+    # insert-at-1(prepend) 방식을 쓰면 모든 항목이 같아져 첫 스텝에서 touching 즉발 게임오버됨.
+
+    # 씨드X = 머리X
+    hx_init = vrep("머리X", V_HEADX)
+    set_seedx = gen(); bs[set_seedx] = mk("data_setvariableto",
+        inputs={"VALUE": slot(hx_init)}, fields={"VARIABLE": ["씨드X", V_SEEDX]})
+    bs[hx_init]["parent"] = set_seedx
+
+    # add trail[1]: 씨드X(=머리X), 머리Y
+    sx0 = vrep("씨드X", V_SEEDX)
+    add_hx = add_to("궤적X", L_TRAILX, sx0)
+    bs[sx0]["parent"] = add_hx
+    hy0 = vrep("머리Y", V_HEADY)
+    add_hy = add_to("궤적Y", L_TRAILY, hy0)
+    bs[hy0]["parent"] = add_hy
+    # (chain은 외부 main chain에 포함하여 연결)
+
+    # repeat 길이: 씨드X -= 16 ; add씨드X / add 머리Y  → trail[2..길이+1] = 꼬리 시작 위치
+    dec_sx = gen(); bs[dec_sx] = mk("data_changevariableby",
+        inputs={"VALUE": num(-16)}, fields={"VARIABLE": ["씨드X", V_SEEDX]})
+    sx1 = vrep("씨드X", V_SEEDX)
+    add_tx = add_to("궤적X", L_TRAILX, sx1)
+    bs[sx1]["parent"] = add_tx
+    hy1 = vrep("머리Y", V_HEADY)
+    add_ty = add_to("궤적Y", L_TRAILY, hy1)
+    bs[hy1]["parent"] = add_ty
+    chain([(dec_sx, bs[dec_sx]), (add_tx, bs[add_tx]), (add_ty, bs[add_ty])])
+    len_tails = vrep("길이", V_LEN)
+    rep_tails = gen(); bs[rep_tails] = mk("control_repeat",
+        inputs={"TIMES": slot(len_tails), "SUBSTACK": [2, dec_sx]})
+    bs[len_tails]["parent"] = rep_tails
+    bs[dec_sx]["parent"] = rep_tails
+
+    # repeat 5: add씨드X / add 머리Y  → trail[길이+2..길이+6] = 버퍼 (마지막 꼬리 위치 반복)
+    sx2 = vrep("씨드X", V_SEEDX)
+    add_bx = add_to("궤적X", L_TRAILX, sx2)
+    bs[sx2]["parent"] = add_bx
+    hy2 = vrep("머리Y", V_HEADY)
+    add_by = add_to("궤적Y", L_TRAILY, hy2)
+    bs[hy2]["parent"] = add_by
+    chain([(add_bx, bs[add_bx]), (add_by, bs[add_by])])
+    rep_buf = gen(); bs[rep_buf] = mk("control_repeat",
+        inputs={"TIMES": num(5), "SUBSTACK": [2, add_bx]})
+    bs[add_bx]["parent"] = rep_buf
 
     # 세그발급 = 0
     set_seg0 = gen(); bs[set_seg0] = mk("data_setvariableto",
@@ -655,7 +690,9 @@ def build_tail_blocks():
     bs[inc_seg]["parent"] = rep_cl
 
     chain([(h2,bs[h2]),(hi2,bs[hi2]),(da_x,bs[da_x]),(da_y,bs[da_y]),
-           (rep_seed,bs[rep_seed]),(set_seg0,bs[set_seg0]),(rep_cl,bs[rep_cl])])
+           (set_seedx,bs[set_seedx]),(add_hx,bs[add_hx]),(add_hy,bs[add_hy]),
+           (rep_tails,bs[rep_tails]),(rep_buf,bs[rep_buf]),
+           (set_seg0,bs[set_seg0]),(rep_cl,bs[rep_cl])])
 
     # === when I start as clone: 세그번호 채택 + show + goto item(세그번호+1) ===
     ch = gen(); bs[ch] = mk("control_start_as_clone", top=True, x=320, y=180)
@@ -869,6 +906,7 @@ def main():
             V_HEADY:   ["머리Y", HEAD_START_Y],
             V_GAP:     ["기록간격", 1],
             V_SEGISS:  ["세그발급", 0],
+            V_SEEDX:   ["씨드X", 0],
         },
         "lists": {
             L_TRAILX: ["궤적X", []],
