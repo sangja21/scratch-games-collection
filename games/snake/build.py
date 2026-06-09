@@ -235,6 +235,7 @@ V_GAP     = "varGap12"
 V_SEG     = "varSeg13"        # 꼬리 sprite-local (세그번호)
 V_SEGISS  = "varSegIssue14"   # 글로벌 임시 (세그발급)
 V_SEEDX   = "varSeedX15"      # 꼬리 시드 루프용 임시 X 카운터
+V_CHKI    = "varChkI16"       # 자기충돌 좌표검사 루프 카운터
 
 L_TRAILX  = "L_trailX01"
 L_TRAILY  = "L_trailY02"
@@ -491,19 +492,6 @@ def build_head_blocks():
     bs[or_wall]["parent"] = if_wall
     bs[set_state_wall]["parent"] = if_wall
 
-    # 자기충돌: if touching 꼬리 → 게임상태=0
-    tm = gen(); bs[tm] = mk("sensing_touchingobjectmenu",
-        fields={"TOUCHINGOBJECTMENU": ["꼬리", None]}, shadow=True)
-    tc = gen(); bs[tc] = mk("sensing_touchingobject",
-        inputs={"TOUCHINGOBJECTMENU":[1, tm]})
-    bs[tm]["parent"] = tc
-    set_state_self = gen(); bs[set_state_self] = mk("data_setvariableto",
-        inputs={"VALUE": num(0)}, fields={"VARIABLE": ["게임상태", V_STATE]})
-    if_self = gen(); bs[if_self] = mk("control_if",
-        inputs={"CONDITION":[2,tc], "SUBSTACK":[2,set_state_self]})
-    bs[tc]["parent"] = if_self
-    bs[set_state_self]["parent"] = if_self
-
     # 궤적 기록: insert 머리X at 1 of 궤적X ; insert 머리Y at 1 of 궤적Y
     hx_ins = vrep("머리X", V_HEADX)
     ins_x = insert_at("궤적X", L_TRAILX, hx_ins, 1)
@@ -528,6 +516,38 @@ def build_head_blocks():
         inputs={"CONDITION":[2,not_trim], "SUBSTACK":[2,del_x]})
     bs[not_trim]["parent"] = rep_trim
     bs[del_x]["parent"] = rep_trim
+
+    # 자기충돌(좌표 기반): 머리 새 칸이 꼬리 몸통 칸과 겹치면 게임오버.
+    #   touching 픽셀판정은 ㄱ자 회전 시 모서리가 닿아 오판 → 좌표 비교로 대체(headless 검증 가능).
+    #   insert/trim 직후이므로 궤적[1]=머리 현재칸, 궤적[2..길이+1]=꼬리 세그먼트가 차지하는 칸.
+    #   검사i=2..길이+1 에서 (궤적X[i],궤적Y[i]) == (머리X,머리Y) 면 충돌.
+    set_chki = gen(); bs[set_chki] = mk("data_setvariableto",
+        inputs={"VALUE": num(2)}, fields={"VARIABLE": ["검사i", V_CHKI]})
+
+    ci_x = vrep("검사i", V_CHKI)
+    it_x = item_of("궤적X", L_TRAILX, ci_x)
+    hx_c = vrep("머리X", V_HEADX)
+    c_cx = cmp_op("operator_equals", it_x, hx_c)
+    ci_y = vrep("검사i", V_CHKI)
+    it_y = item_of("궤적Y", L_TRAILY, ci_y)
+    hy_c = vrep("머리Y", V_HEADY)
+    c_cy = cmp_op("operator_equals", it_y, hy_c)
+    c_self = bool_op("operator_and", c_cx, c_cy)
+    set_state_self = gen(); bs[set_state_self] = mk("data_setvariableto",
+        inputs={"VALUE": num(0)}, fields={"VARIABLE": ["게임상태", V_STATE]})
+    if_self_hit = gen(); bs[if_self_hit] = mk("control_if",
+        inputs={"CONDITION":[2,c_self], "SUBSTACK":[2,set_state_self]})
+    bs[c_self]["parent"] = if_self_hit
+    bs[set_state_self]["parent"] = if_self_hit
+    inc_chki = gen(); bs[inc_chki] = mk("data_changevariableby",
+        inputs={"VALUE": num(1)}, fields={"VARIABLE": ["검사i", V_CHKI]})
+    chain([(if_self_hit, bs[if_self_hit]), (inc_chki, bs[inc_chki])])
+    len_chk = vrep("길이", V_LEN)
+    rep_self = gen(); bs[rep_self] = mk("control_repeat",
+        inputs={"TIMES": slot(len_chk), "SUBSTACK":[2, if_self_hit]})
+    bs[len_chk]["parent"] = rep_self
+    bs[if_self_hit]["parent"] = rep_self
+    chain([(set_chki, bs[set_chki]), (rep_self, bs[rep_self])])
 
     # 사과 먹기: if (머리X=사과X AND 머리Y=사과Y) → 점수+1/길이+1/best/사과배치/세그발급+1/clone
     hxe = vrep("머리X", V_HEADX); axe = vrep("사과X", V_APPLEX)
@@ -586,8 +606,9 @@ def build_head_blocks():
     chain([(h3,bs[h3]),(set_dir,bs[set_dir]),
            (mif_r,bs[mif_r]),(mif_u,bs[mif_u]),(mif_l,bs[mif_l]),(mif_d,bs[mif_d]),
            (set_hx,bs[set_hx]),(set_hy,bs[set_hy]),
-           (if_wall,bs[if_wall]),(if_self,bs[if_self]),
+           (if_wall,bs[if_wall]),
            (ins_x,bs[ins_x]),(ins_y,bs[ins_y]),(rep_trim,bs[rep_trim]),
+           (set_chki,bs[set_chki]),(rep_self,bs[rep_self]),
            (if_eat,bs[if_eat]),(bc_tail,bs[bc_tail])])
 
     # === when flag clicked: 게임오버 효과음 ===
@@ -923,6 +944,7 @@ def main():
             V_GAP:     ["기록간격", 1],
             V_SEGISS:  ["세그발급", 0],
             V_SEEDX:   ["씨드X", 0],
+            V_CHKI:    ["검사i", 0],
         },
         "lists": {
             L_TRAILX: ["궤적X", []],
