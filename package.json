@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "html-encoding-sniffer": "^4.0.0",
+    "scratch-vm": "^5.0.300"
+  }
+}
