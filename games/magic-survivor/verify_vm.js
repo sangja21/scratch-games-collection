@@ -108,6 +108,35 @@ function check(label, ok, extra) {
   let bolts = clones('마법탄');
   check('마법탄 클론이 발사됨 (>=1)', bolts.length >= 1, `bolts=${bolts.length}`);
 
+  // ---- (4b) ACTUAL MOVEMENT: enemy approaches wizard, bolt travels ----
+  // (regression guard: move-steps must read the speed VARIABLE, not 0)
+  console.log('--- (4b) 실제 이동 (적 추적 / 마법탄 비행) ---');
+  const wiz = vm.runtime.targets.find(t => t.sprite && t.sprite.name === '마법사' && t.isOriginal);
+  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  // pick one enemy + one bolt, snapshot positions, run several ticks, compare
+  const e0 = clones('적')[0];
+  const b0 = clones('마법탄')[0];
+  const eStart = e0 ? { x: e0.x, y: e0.y } : null;
+  const bStart = b0 ? { x: b0.x, y: b0.y } : null;
+  const eDistWizBefore = (e0 && wiz) ? dist(e0, wiz) : null;
+  await sleep(400);
+  if (e0 && eStart) {
+    const moved = dist(e0, eStart);
+    check('적 클론이 실제로 이동함 (>2px / 0.4s)', moved > 2, `moved=${moved.toFixed(1)}px`);
+    if (wiz && eDistWizBefore != null) {
+      const closer = dist(e0, wiz) < eDistWizBefore;
+      check('적이 마법사에게 더 가까워짐 (추적 동작)', closer,
+            `dist ${eDistWizBefore.toFixed(1)}→${dist(e0, wiz).toFixed(1)}`);
+    }
+  } else check('적 클론 이동 측정 대상 존재', false, 'no enemy clone');
+  if (b0 && bStart) {
+    const moved = dist(b0, bStart);
+    // bolt may have been deleted (hit/edge) within the window; treat deletion as "it moved"
+    const gone = !vm.runtime.targets.includes(b0);
+    check('마법탄이 실제로 날아감 (>3px 또는 소멸)', moved > 3 || gone,
+          gone ? 'bolt traveled & despawned' : `moved=${moved.toFixed(1)}px`);
+  } else check('마법탄 클론 이동 측정 대상 존재', false, 'no bolt clone');
+
   // ---- (5) damage popup as NUMBER COSTUMES (no say bubbles) ----
   console.log('--- (5) 데미지 팝업 (숫자 코스튬, say 미사용) ---');
   async function fireDamage(atk, x, y) {

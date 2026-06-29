@@ -775,7 +775,7 @@ def build_bolt_blocks():
     show = gen(); bs[show] = mk("looks_show")
 
     # repeat until (touching edge) or (게임상태=0) { move; 관통 처리; wait }
-    mv = b_movesteps(bs, V_BOLTSPD)
+    mv = b_movesteps(bs, vrep("마법탄속도", V_BOLTSPD))
     # if (touching 적) and (관통쿨=0) { 남은관통-=1; 관통쿨=4; if 남은관통<1 delete }
     tc_e = b_touching(bs, "적")
     hcd_r = vrep("관통쿨", V_BOLTHITCD)
@@ -945,7 +945,7 @@ def build_enemy_blocks():
 
     # 2) 추적 (게임상태=1): point towards 마법사 ; move 내속도
     pt = b_pointtowards(bs, "마법사")
-    mv = b_movesteps(bs, V_ESPD)
+    mv = b_movesteps(bs, vrep("내속도", V_ESPD))
     chain([(pt, bs[pt]), (mv, bs[mv])])
     state2 = vrep("게임상태", V_STATE)
     cond_play2 = cmp_op("operator_equals", state2, 1)
@@ -1102,7 +1102,7 @@ def build_gem_blocks():
     magnet_r = vrep("흡수범위", V_MAGNET)
     cond_near = cmp_op("operator_lt", dist_r, magnet_r)
     pt = b_pointtowards(bs, "마법사")
-    mv = b_movesteps(bs, V_MAGSPD)
+    mv = b_movesteps(bs, vrep("흡수속도", V_MAGSPD))
     chain([(pt, bs[pt]), (mv, bs[mv])])
     if_near = b_if(bs, cond_near, pt)
     tc_m = b_touching(bs, "마법사")
