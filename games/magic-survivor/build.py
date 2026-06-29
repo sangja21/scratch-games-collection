@@ -21,12 +21,52 @@
   하나씩 원자 실행된다 → 각 적 클론이 'distance to 마법사' 최솟값 리덕션을 경쟁
   조건 없이 수행한다. 끝나면 조준있음=1 일 때만 그 좌표로 발사한다.
 """
-import json, os, zipfile, shutil, hashlib, random, math
+import json, os, zipfile, shutil, hashlib, random, math, struct
 
 HERE   = os.path.dirname(os.path.abspath(__file__))
 ASSETS = os.path.join(HERE, "assets")
 WORK   = os.path.join(HERE, ".build")
 OUTPUT = os.path.join(HERE, "마법_생존.sb3")
+
+# ============================================================
+#  효과음 합성 (전용 사운드: 발사=퓽 zap / 파괴=펑 boom) — 결정적 생성
+# ============================================================
+SND_RATE = 11025
+
+def _wav_bytes(samples, rate=SND_RATE):
+    """float 샘플(-1..1) 리스트 → 16-bit PCM mono WAV 바이트 (결정적)."""
+    pcm = b"".join(struct.pack("<h", max(-32767, min(32767, int(s * 32767)))) for s in samples)
+    n = len(pcm)
+    return (b"RIFF" + struct.pack("<I", 36 + n) + b"WAVE"
+            + b"fmt " + struct.pack("<IHHIIHH", 16, 1, 1, rate, rate * 2, 2, 16)
+            + b"data" + struct.pack("<I", n) + pcm)
+
+def synth_zap(rate=SND_RATE):
+    """마법 발사 — 짧은 하강 처프 '퓽' (레이저 느낌, 자주 울려도 안 거슬리게 짧게)."""
+    N = int(rate * 0.11); out = []
+    for i in range(N):
+        t = i / rate
+        f = 250 + 900 * math.exp(-t * 16)        # 1150Hz → 250Hz 하강 스윕
+        env = math.exp(-t * 26)                  # 빠른 감쇠
+        s = math.sin(2 * math.pi * f * t)
+        s = (s + 0.3 * (1 if s > 0 else -1)) / 1.3  # 살짝 각진 레이저 톤
+        out.append(s * env * 0.55)
+    return out
+
+def synth_boom(rate=SND_RATE):
+    """적 파괴 — 노이즈 버스트 + 저음 thump '펑' (폭발). 고정 시드로 결정적."""
+    N = int(rate * 0.30); out = []
+    rng = random.Random(20240613)
+    lp = 0.0
+    for i in range(N):
+        t = i / rate
+        env = math.exp(-t * 11)
+        white = rng.random() * 2 - 1
+        lp = lp + 0.45 * (white - lp)            # 간단 저역통과 → 둔탁하게
+        thump = math.sin(2 * math.pi * (60 + 40 * math.exp(-t * 20)) * t)
+        s = (lp * 0.6 + thump * 0.7) * env
+        out.append(max(-1, min(1, s)))
+    return out
 
 # ============================================================
 #  SVG assets
@@ -432,11 +472,11 @@ def b_wait_var(bs, vid, name):
     bs[v]["parent"] = bid
     return bid
 
-def b_sound(bs, pitch):
+def b_sound(bs, pitch, sound="pop"):
     pe = gen(); bs[pe] = mk("sound_seteffectto",
         inputs={"VALUE": num(pitch)}, fields={"EFFECT": ["PITCH", None]})
     sm = gen(); bs[sm] = mk("sound_sounds_menu",
-        fields={"SOUND_MENU": ["pop", None]}, shadow=True)
+        fields={"SOUND_MENU": [sound, None]}, shadow=True)
     sp = gen(); bs[sp] = mk("sound_play", inputs={"SOUND_MENU": [1, sm]})
     bs[sm]["parent"] = sp
     chain([(pe, bs[pe]), (sp, bs[sp])])
@@ -770,7 +810,7 @@ def build_mage_blocks():
     aimx_r = vrep("조준X", V_AIMX); aimy_r = vrep("조준Y", V_AIMY)
     set_fx = b_setvar(bs, "발사X", V_FIREX, aimx_r)
     set_fy = b_setvar(bs, "발사Y", V_FIREY, aimy_r)
-    sh_fire, _ = b_sound(bs, 120)
+    sh_fire, _ = b_sound(bs, 0, "zap")   # 마법 발사 — 전용 '퓽' 효과음
     bc_fire = b_broadcast(bs, "발사", BR_FIRE)
     chain([(set_fx, bs[set_fx]), (set_fy, bs[set_fy]), (sh_fire, bs[sh_fire]),
            (bc_fire, bs[bc_fire])])
@@ -1156,7 +1196,7 @@ def build_enemy_blocks():
     exm = gen(); bs[exm] = mk("looks_costume", fields={"COSTUME": ["폭발", None]}, shadow=True)
     sw_ex = gen(); bs[sw_ex] = mk("looks_switchcostumeto", inputs={"COSTUME": [1, exm]})
     bs[exm]["parent"] = sw_ex
-    sh_die, _ = b_sound(bs, -50)
+    sh_die, _ = b_sound(bs, 0, "boom")   # 적 파괴 — 전용 '펑' 폭발음
     ch_sz = gen(); bs[ch_sz] = mk("looks_changesizeby", inputs={"CHANGE": num(12)})
     ch_gh = gen(); bs[ch_gh] = mk("looks_changeeffectby",
         inputs={"CHANGE": num(20)}, fields={"EFFECT": ["GHOST", None]})
@@ -1507,6 +1547,15 @@ def main():
     pop_md5 = md5_bytes(pop_bytes)
     with open(f"{WORK}/{pop_md5}.wav", "wb") as f: f.write(pop_bytes)
 
+    # 전용 효과음 합성: zap(발사) / boom(파괴)
+    def save_wav(samples):
+        b = _wav_bytes(samples)
+        m = md5_bytes(b)
+        with open(f"{WORK}/{m}.wav", "wb") as f: f.write(b)
+        return m, len(samples)
+    zap_md5, zap_n   = save_wav(synth_zap())
+    boom_md5, boom_n = save_wav(synth_boom())
+
     stage_blocks,    stage_cmt    = build_stage_blocks()
     mage_blocks,     mage_cmt     = build_mage_blocks()
     bolt_blocks,     bolt_cmt     = build_bolt_blocks()
@@ -1519,6 +1568,14 @@ def main():
     pop_sound = lambda: {
         "name": "pop", "assetId": pop_md5, "dataFormat": "wav",
         "format": "", "rate": 11025, "sampleCount": 258, "md5ext": f"{pop_md5}.wav"
+    }
+    zap_sound = lambda: {
+        "name": "zap", "assetId": zap_md5, "dataFormat": "wav",
+        "format": "", "rate": SND_RATE, "sampleCount": zap_n, "md5ext": f"{zap_md5}.wav"
+    }
+    boom_sound = lambda: {
+        "name": "boom", "assetId": boom_md5, "dataFormat": "wav",
+        "format": "", "rate": SND_RATE, "sampleCount": boom_n, "md5ext": f"{boom_md5}.wav"
     }
 
     # ---- Stage: 전역 변수 62개 (튜닝30+진행32) + 방송 7개 ----
@@ -1578,7 +1635,7 @@ def main():
             "assetId": mage_md5, "md5ext": f"{mage_md5}.svg",
             "rotationCenterX": 30, "rotationCenterY": 36
         }],
-        "sounds": [pop_sound()],
+        "sounds": [pop_sound(), zap_sound()],
         "volume": 100, "layerOrder": 6, "visible": True,
         "x": 0, "y": 0, "size": 60, "direction": 90,
         "draggable": False, "rotationStyle": "don't rotate"
@@ -1623,7 +1680,7 @@ def main():
              "assetId": ex_md5, "md5ext": f"{ex_md5}.svg",
              "rotationCenterX": 30, "rotationCenterY": 30},
         ],
-        "sounds": [pop_sound()],
+        "sounds": [pop_sound(), boom_sound()],
         "volume": 100, "layerOrder": 4, "visible": False,
         "x": 0, "y": 0, "size": 60, "direction": 90,
         "draggable": False, "rotationStyle": "don't rotate"
