@@ -205,10 +205,21 @@ def chain(seq):
         cid, c = seq[i]; nid, n = seq[i+1]
         c["next"] = nid; n["parent"] = cid
 
+# ----- Scratch 블록 코멘트(노란 메모) — 에디터에서 코드 가이드 투어 -----
+_cmt_ic = [0]
+def add_comment(bs, comments, block_id, text, x=520, y=40, w=280, h=150):
+    _cmt_ic[0] += 1
+    cid = f"cmt{_cmt_ic[0]:03d}"
+    comments[cid] = {"blockId": block_id, "x": x, "y": y, "width": w, "height": h,
+                     "minimized": False, "text": text}
+    if block_id in bs:
+        bs[block_id]["comment"] = cid
+    return cid
+
 # ============================================================
 #  IDs  (V_* / var* / BR_* 컨벤션)
 # ============================================================
-# ----- 5.1 튜닝 변수 24개 (개조 손잡이) + 5.1b 스케일링 5개 = 29개 -----
+# ----- 5.1 튜닝 24 (개조 손잡이) + 5.1b 스케일링 4 + 5.1c 수학 2 = 30개 -----
 V_ATK      = "varAtk01"        # 마법공격력   1
 V_FIREGAP  = "varFireGap02"    # 발사간격     0.6
 V_BOLTSPD  = "varBoltSpd03"    # 마법탄속도   8
@@ -239,9 +250,11 @@ V_EHPSCALE = "varEHPscale53"   # 적체력증가   1     단계당 모든 적에
 V_ESPSCALE = "varESPscale54"   # 적속도증가   0.05  단계당 모든 적에 더해지는 속도
 V_SPDOWN   = "varSpawnDown55"  # 스폰감소     0.06  단계당 줄어드는 스폰간격(초)
 V_SPMIN    = "varSpawnMin56"   # 스폰간격최소  0.4   스폰간격이 내려갈 수 있는 하한
-V_LVUPINC  = "varLvUpInc58"    # 레벨업증가   2     레벨업마다 다음 레벨업경험치가 늘어나는 양
+# ----- 5.1c 수학 손잡이 (피보나치 레벨업 씨앗 + 소수 보너스) -----
+V_LVPREV   = "varLvPrev59"     # 경험치이전   3     피보나치 씨앗(앞 항). 레벨업경험치(5)와 둘이 시작쌍
+V_PRIMEBONUS = "varPrimeBonus60" # 소수보너스 3     레벨이 소수일 때 추가로 받는 보너스 경험치
 
-# ----- 5.2 진행/내부 상태 변수 29개 -----
+# ----- 5.2 진행/내부 상태 변수 32개 -----
 V_STATE    = "varState25"      # 게임상태  1=전투,2=강화선택,0=게임오버
 V_TIME     = "varTime26"       # 생존시간 (점수)
 V_LEVEL    = "varLevel27"      # 레벨
@@ -271,6 +284,9 @@ V_DMGOFF   = "varDmgOff50"     # 데미지오프셋
 V_DMGLEN   = "varDmgLen51"     # 데미지글자수
 V_DMGPOS   = "varDmgPos52"     # 데미지자리
 V_EFFGAP   = "varEffGap57"     # 유효스폰간격 (단계 반영해 계산되는 실제 스폰 대기시간)
+V_LVNEXT   = "varLvNext61"     # 경험치다음 (피보나치 다음 항 계산용 임시값)
+V_ISPRIME  = "varIsPrime62"    # 소수냐 (레벨이 소수면 1, 아니면 0)
+V_DIV      = "varDiv63"        # 나누는수 (소수 판정 루프 카운터)
 
 # ----- 5.3 클론-로컬 변수 11개 -----
 V_BOLTISC   = "varBoltIsClone"   # 마법탄: 복제됨
@@ -455,9 +471,10 @@ def _of(bs, spr, prop):
 # ============================================================
 def build_stage_blocks():
     bs = {}
+    comments = {}
     vrep, op, cmp_op, bool_op = make_helpers(bs)
 
-    # ===== (A) 깃발 클릭 → 변수 58개 전부 초기화(한 곳에 모음) → 게임시작 =====
+    # ===== (A) 깃발 클릭 → 변수 62개 전부 초기화(한 곳에 모음) → 게임시작 =====
     h = gen(); bs[h] = mk("event_whenflagclicked", top=True, x=20, y=20)
     seq = [(h, bs[h])]
     def add_set(name, vid, val):
@@ -488,12 +505,14 @@ def build_stage_blocks():
     add_set("강한적_체력", V_EHPS, 6)
     add_set("강한적_속도", V_ESPS, 0.6)
     add_set("강한적_경험치", V_EXPS, 6)
-    # 난이도 스케일링 5개 — 적이 내 레벨에 비례해 강해지고, 레벨업은 점점 비싸진다
+    # 난이도 스케일링 4개 — 적이 내 레벨에 비례해 강해진다
     add_set("적체력증가", V_EHPSCALE, 1)
     add_set("적속도증가", V_ESPSCALE, 0.05)
     add_set("스폰감소", V_SPDOWN, 0.06)
     add_set("스폰간격최소", V_SPMIN, 0.4)
-    add_set("레벨업증가", V_LVUPINC, 2)
+    # 수학 손잡이: 피보나치 레벨업 씨앗 + 소수 보너스
+    add_set("경험치이전", V_LVPREV, 3)
+    add_set("소수보너스", V_PRIMEBONUS, 3)
     # 체력 = 최대체력 (튜닝 변수, 최대체력 참조)
     maxhp_r = vrep("최대체력", V_MAXHP)
     set_hp = b_setvar(bs, "체력", V_HP, maxhp_r)
@@ -529,6 +548,9 @@ def build_stage_blocks():
     add_set("데미지글자수", V_DMGLEN, 0)
     add_set("데미지자리", V_DMGPOS, 0)
     add_set("유효스폰간격", V_EFFGAP, 1.2)
+    add_set("경험치다음", V_LVNEXT, 0)
+    add_set("소수냐", V_ISPRIME, 0)
+    add_set("나누는수", V_DIV, 0)
 
     w1 = b_wait(bs, 0.3); seq.append((w1, bs[w1]))
     bc_start = b_broadcast(bs, "게임시작", BR_START); seq.append((bc_start, bs[bc_start]))
@@ -583,12 +605,48 @@ def build_stage_blocks():
     neg_lvup = op("operator_subtract", 0, lvup_r2)
     dec_exp = b_changevar(bs, "경험치", V_EXP, neg_lvup)
     inc_level = b_changevar(bs, "레벨", V_LEVEL, 1)
-    # 다음 레벨업은 더 비싸진다: 레벨업경험치 += 레벨업증가 (성장 곡선이 완만해짐)
-    lvupinc_r = vrep("레벨업증가", V_LVUPINC)
-    inc_cost = b_changevar(bs, "레벨업경험치", V_LVUP, lvupinc_r)
+
+    # ── 🌀 피보나치: 다음 레벨업 비용 = 앞 두 비용의 합 (5,8,13,21,34,…) ──
+    #   경험치다음 = 경험치이전 + 레벨업경험치 ; 경험치이전 = 레벨업경험치 ; 레벨업경험치 = 경험치다음
+    prev_r = vrep("경험치이전", V_LVPREV); cur_r = vrep("레벨업경험치", V_LVUP)
+    sum_fib = op("operator_add", prev_r, cur_r)
+    set_next = b_setvar(bs, "경험치다음", V_LVNEXT, sum_fib)
+    cur_r2 = vrep("레벨업경험치", V_LVUP)
+    set_prev = b_setvar(bs, "경험치이전", V_LVPREV, cur_r2)
+    next_r = vrep("경험치다음", V_LVNEXT)
+    set_cur = b_setvar(bs, "레벨업경험치", V_LVUP, next_r)
+
+    # ── 🔢 소수 판정: 레벨이 소수면 황금 보너스 (2,3,5,7,11,… 만 반짝) ──
+    #   소수냐=1 가정 → 2부터 (레벨-1)까지 나눠떨어지는 수가 있으면 소수아님(0)
+    set_prime1 = b_setvar(bs, "소수냐", V_ISPRIME, 1)
+    set_div2 = b_setvar(bs, "나누는수", V_DIV, 2)
+    lvl_pm = vrep("레벨", V_LEVEL); div_pm = vrep("나누는수", V_DIV)
+    modv = op("operator_mod", lvl_pm, div_pm)
+    cond_div0 = cmp_op("operator_equals", modv, 0)
+    set_notprime = b_setvar(bs, "소수냐", V_ISPRIME, 0)
+    if_div = b_if(bs, cond_div0, set_notprime)
+    inc_div = b_changevar(bs, "나누는수", V_DIV, 1)
+    chain([(if_div, bs[if_div]), (inc_div, bs[inc_div])])
+    lvl_r3 = vrep("레벨", V_LEVEL)
+    lvl_m2 = op("operator_subtract", lvl_r3, 2)  # 2~(레벨-1) → (레벨-2)번 검사
+    rep_prime = gen(); bs[rep_prime] = mk("control_repeat",
+        inputs={"TIMES": slot(lvl_m2), "SUBSTACK": [2, if_div]})
+    bs[lvl_m2]["parent"] = rep_prime; bs[if_div]["parent"] = rep_prime
+    # 소수면 보너스 경험치 + 골든 효과음
+    isprime_r = vrep("소수냐", V_ISPRIME)
+    cond_isprime = cmp_op("operator_equals", isprime_r, 1)
+    bonus_r = vrep("소수보너스", V_PRIMEBONUS)
+    add_bonus = b_changevar(bs, "경험치", V_EXP, bonus_r)
+    sh_prime, _ = b_sound(bs, 350)
+    chain([(add_bonus, bs[add_bonus]), (sh_prime, bs[sh_prime])])
+    if_prime = b_if(bs, cond_isprime, add_bonus)
+
     set_st2 = b_setvar(bs, "게임상태", V_STATE, 2)
     bc_lvup = b_broadcast(bs, "레벨업", BR_LEVELUP)
-    chain([(dec_exp, bs[dec_exp]), (inc_level, bs[inc_level]), (inc_cost, bs[inc_cost]),
+    chain([(dec_exp, bs[dec_exp]), (inc_level, bs[inc_level]),
+           (set_next, bs[set_next]), (set_prev, bs[set_prev]), (set_cur, bs[set_cur]),
+           (set_prime1, bs[set_prime1]), (set_div2, bs[set_div2]),
+           (rep_prime, bs[rep_prime]), (if_prime, bs[if_prime]),
            (set_st2, bs[set_st2]), (bc_lvup, bs[bc_lvup])])
     if_levelup = b_if(bs, cond_levelup, dec_exp)
 
@@ -606,13 +664,39 @@ def build_stage_blocks():
     fe_d = b_forever(bs, if_levelup)
     chain([(hd, bs[hd]), (wu, bs[wu]), (fe_d, bs[fe_d])])
 
-    return bs
+    # ── 가이드 투어 코멘트 ──
+    add_comment(bs, comments, h,
+        "⚙️ 개조 손잡이 (여기가 핵심!)\n"
+        "이 초록 깃발 묶음에 게임의 모든 숫자가 한글 변수로 모여 있어요. "
+        "여기 숫자 하나만 바꾸면(예: 마법공격력 1→5) 게임이 확 달라져요. "
+        "바꾸기 전에 '이렇게 될 것 같다'를 먼저 예상해 보고 ▶ 를 눌러 확인해 보세요!",
+        x=-360, y=-260, w=320, h=170)
+    add_comment(bs, comments, hb,
+        "⏱️ 난이도 단계 시계\n"
+        "1초마다 생존시간이 늘고, 단계 = 생존시간 ÷ 난이도주기 로 정해져요. "
+        "단계가 오르면 더 센 적이 섞여 나오고 더 자주 쏟아져요(스폰감소).",
+        x=560, y=-40, w=300, h=140)
+    add_comment(bs, comments, set_next,
+        "🌀 피보나치 수열!\n"
+        "다음 레벨업 비용 = 경험치이전 + 레벨업경험치 (바로 앞 두 비용의 합).\n"
+        "그래서 5 → 8 → 13 → 21 → 34 … 로 늘어나요. 두 씨앗(경험치이전·레벨업경험치)을 "
+        "바꾸면 수열 전체가 달라져요. (토끼·해바라기 씨앗에도 숨어 있는 그 수열!)",
+        x=560, y=300, w=330, h=180)
+    add_comment(bs, comments, set_prime1,
+        "🔢 소수 판정 (황금 웨이브)\n"
+        "2부터 (레벨-1)까지 나눠서 딱 떨어지는 수가 하나도 없으면 그 레벨은 '소수'예요. "
+        "소수 레벨(2·3·5·7·11·13…)에 도달하면 보너스 경험치를 받아요. "
+        "왜 이 숫자들만 특별할까요?",
+        x=560, y=500, w=330, h=170)
+
+    return bs, comments
 
 # ============================================================
 #  마법사 (MAGE)
 # ============================================================
 def build_mage_blocks():
     bs = {}
+    comments = {}
     vrep, op, cmp_op, bool_op = make_helpers(bs)
 
     # ===== (A) 깃발 초기화 =====
@@ -721,13 +805,26 @@ def build_mage_blocks():
     fe_d = b_forever(bs, if_hurt)
     chain([(hd, bs[hd]), (fe_d, bs[fe_d])])
 
-    return bs
+    add_comment(bs, comments, fe_b,
+        "🕹️ 8방향 이동\n"
+        "화살표 키를 누른 만큼 x/y 좌표를 '이동속도'씩 더하고 빼요. "
+        "위·아래·좌·우를 같이 누르면 대각선! 조준은 마법이 알아서 하니, 너는 피하는 데만 집중해요.",
+        x=560, y=-40, w=300, h=140)
+    add_comment(bs, comments, hc,
+        "🎯 자동 조준의 비밀\n"
+        "발사 직전 '조준요청'을 방송하고 기다려요(broadcast and wait). 그러면 모든 적이 "
+        "차례로 '내가 지금까지 중 마법사에게 제일 가까우면 내 위치를 적어둔다'를 실행해, "
+        "경쟁 없이 가장 가까운 적을 찾아내요 — 이게 최솟값 찾기예요!",
+        x=560, y=200, w=320, h=180)
+
+    return bs, comments
 
 # ============================================================
 #  마법탄 (BOLT: 스포너 + 클론 본체)
 # ============================================================
 def build_bolt_blocks():
     bs = {}
+    comments = {}
     vrep, op, cmp_op, bool_op = make_helpers(bs)
 
     # (A) 깃발 초기화
@@ -837,13 +934,20 @@ def build_bolt_blocks():
            (set_hcd0, bs[set_hcd0]), (g, bs[g]), (pdir, bs[pdir]),
            (front, bs[front]), (show, bs[show]), (ru, bs[ru]), (del_end, bs[del_end])])
 
-    return bs
+    add_comment(bs, comments, if_spawn,
+        "✨ 여러 발(부채꼴) 발사\n"
+        "'추가발사' 개수만큼 마법탄 클론을 만들어요. 각 탄은 살짝 다른 각도로 퍼져서 부채꼴이 돼요. "
+        "강화 '4 여러발+'로 이 숫자를 올리면 한 번에 쏘는 탄이 늘어나요.",
+        x=480, y=-40, w=300, h=150)
+
+    return bs, comments
 
 # ============================================================
 #  적 (ENEMY: 시간 기반 스포너 + 클론 본체 + 조준 보고)
 # ============================================================
 def build_enemy_blocks():
     bs = {}
+    comments = {}
     vrep, op, cmp_op, bool_op = make_helpers(bs)
 
     # (A) 깃발 초기화
@@ -1105,13 +1209,26 @@ def build_enemy_blocks():
     # remove the unused stray clone-hat placeholder
     del bs[hd]
 
-    return bs
+    add_comment(bs, comments, hp_scale,
+        "💪 적은 내 레벨에 비례해 강해진다\n"
+        "내체력 = 종류 기본체력 + (레벨-1) × 적체력증가.\n"
+        "내가 강화를 받아 레벨이 오를수록 적도 그만큼 단단해져요 — 그래서 공격력만 올린다고 "
+        "학살이 안 돼요. (시간이 아니라 '내 힘'에 맞춰 강해지게 만든 부분!)",
+        x=560, y=120, w=330, h=180)
+    add_comment(bs, comments, hd2,
+        "📡 가장 가까운 적 찾기 (최솟값)\n"
+        "마법사가 '조준요청'을 보내면, 적 클론마다 '나와 마법사 거리'를 재서 지금까지의 "
+        "최솟값보다 가까우면 내 위치를 적어둬요. 한 명씩 차례로 실행돼서 답이 딱 하나로 정해져요.",
+        x=560, y=420, w=320, h=160)
+
+    return bs, comments
 
 # ============================================================
 #  경험치보석 (GEM: 드롭 + 흡수)
 # ============================================================
 def build_gem_blocks():
     bs = {}
+    comments = {}
     vrep, op, cmp_op, bool_op = make_helpers(bs)
 
     # (A) 깃발 초기화
@@ -1175,13 +1292,14 @@ def build_gem_blocks():
     chain([(ch, bs[ch]), (set_isc1, bs[set_isc1]), (set_mine, bs[set_mine]),
            (g, bs[g]), (show, bs[show]), (fe_body, bs[fe_body])])
 
-    return bs
+    return bs, comments
 
 # ============================================================
 #  강화카드 (CARD: 레벨업 시 강화 택1)
 # ============================================================
 def build_card_blocks():
     bs = {}
+    comments = {}
     vrep, op, cmp_op, bool_op = make_helpers(bs)
 
     # (A) 깃발
@@ -1237,13 +1355,21 @@ def build_card_blocks():
            (sh_up, bs[sh_up]), (hi2, bs[hi2]), (w1, bs[w1]),
            (set_st1, bs[set_st1]), (bc_done, bs[bc_done])])
 
-    return bs
+    add_comment(bs, comments, hb,
+        "🃏 레벨업 강화 택1\n"
+        "레벨업하면 카드가 떠서 1~4 키를 기다려요. 누른 번호에 따라 능력치를 '강화량'만큼 "
+        "올려줘요: 1 마법공격력+ · 2 발사간격- · 3 이동속도+ · 4 여러발+. "
+        "5번(관통+)을 직접 추가해 보는 게 미션 사다리 3층!",
+        x=420, y=-40, w=320, h=170)
+
+    return bs, comments
 
 # ============================================================
 #  게임오버 (GAME OVER 배너)
 # ============================================================
 def build_gameover_blocks():
     bs = {}
+    comments = {}
     vrep, op, cmp_op, _ = make_helpers(bs)
 
     h = gen(); bs[h] = mk("event_whenflagclicked", top=True, x=20, y=20)
@@ -1262,13 +1388,14 @@ def build_gameover_blocks():
     show = gen(); bs[show] = mk("looks_show")
     chain([(h, bs[h]), (hi, bs[hi]), (g, bs[g]), (sz, bs[sz]), (front, bs[front]),
            (wu1, bs[wu1]), (wu2, bs[wu2]), (show, bs[show])])
-    return bs
+    return bs, comments
 
 # ============================================================
 #  데미지 (플로팅 데미지 팝업) — 숫자 코스튬 0~9, say 미사용
 # ============================================================
 def build_damage_blocks():
     bs = {}
+    comments = {}
     vrep, op, cmp_op, _ = make_helpers(bs)
 
     # (A) 깃발 초기화
@@ -1350,7 +1477,7 @@ def build_damage_blocks():
     chain([(ch, bs[ch]), (set_isc1, bs[set_isc1]), (front, bs[front]), (sz, bs[sz]),
            (sw_num, bs[sw_num]), (g, bs[g]), (clr_gh, bs[clr_gh]), (show, bs[show]),
            (rep_an, bs[rep_an]), (del_c, bs[del_c])])
-    return bs
+    return bs, comments
 
 # ============================================================
 #  ASSEMBLE
@@ -1380,21 +1507,21 @@ def main():
     pop_md5 = md5_bytes(pop_bytes)
     with open(f"{WORK}/{pop_md5}.wav", "wb") as f: f.write(pop_bytes)
 
-    stage_blocks    = build_stage_blocks()
-    mage_blocks     = build_mage_blocks()
-    bolt_blocks     = build_bolt_blocks()
-    enemy_blocks    = build_enemy_blocks()
-    gem_blocks      = build_gem_blocks()
-    card_blocks     = build_card_blocks()
-    gameover_blocks = build_gameover_blocks()
-    damage_blocks   = build_damage_blocks()
+    stage_blocks,    stage_cmt    = build_stage_blocks()
+    mage_blocks,     mage_cmt     = build_mage_blocks()
+    bolt_blocks,     bolt_cmt     = build_bolt_blocks()
+    enemy_blocks,    enemy_cmt    = build_enemy_blocks()
+    gem_blocks,      gem_cmt      = build_gem_blocks()
+    card_blocks,     card_cmt     = build_card_blocks()
+    gameover_blocks, gameover_cmt = build_gameover_blocks()
+    damage_blocks,   damage_cmt   = build_damage_blocks()
 
     pop_sound = lambda: {
         "name": "pop", "assetId": pop_md5, "dataFormat": "wav",
         "format": "", "rate": 11025, "sampleCount": 258, "md5ext": f"{pop_md5}.wav"
     }
 
-    # ---- Stage: 전역 변수 58개 (튜닝29+진행29) + 방송 7개 ----
+    # ---- Stage: 전역 변수 62개 (튜닝30+진행32) + 방송 7개 ----
     stage = {
         "isStage": True, "name": "Stage",
         "variables": {
@@ -1407,11 +1534,12 @@ def main():
             V_EHPW: ["약한적_체력", 1], V_ESPW: ["약한적_속도", 1.2], V_EXPW: ["약한적_경험치", 1],
             V_EHPM: ["중간적_체력", 3], V_ESPM: ["중간적_속도", 0.9], V_EXPM: ["중간적_경험치", 3],
             V_EHPS: ["강한적_체력", 6], V_ESPS: ["강한적_속도", 0.6], V_EXPS: ["강한적_경험치", 6],
-            # 난이도 스케일링 5 (적체력/속도증가 + 스폰감소/최소 + 레벨업증가)
+            # 난이도 스케일링 4 (적체력/속도증가 + 스폰감소/최소)
             V_EHPSCALE: ["적체력증가", 1], V_ESPSCALE: ["적속도증가", 0.05],
             V_SPDOWN: ["스폰감소", 0.06], V_SPMIN: ["스폰간격최소", 0.4],
-            V_LVUPINC: ["레벨업증가", 2],
-            # 진행 29
+            # 수학 손잡이 2
+            V_LVPREV: ["경험치이전", 3], V_PRIMEBONUS: ["소수보너스", 3],
+            # 진행 32
             V_STATE: ["게임상태", 1], V_TIME: ["생존시간", 0], V_LEVEL: ["레벨", 1],
             V_EXP: ["경험치", 0], V_INVT: ["무적", 0], V_STAGE: ["단계", 0],
             V_SPAWNN: ["스폰카운트", 0], V_ALIVE: ["적수", 0], V_AIMD: ["조준거리", 99999],
@@ -1423,12 +1551,13 @@ def main():
             V_DMGDIGIT: ["데미지숫자", 0], V_DMGOFF: ["데미지오프셋", 0],
             V_DMGLEN: ["데미지글자수", 0], V_DMGPOS: ["데미지자리", 0],
             V_EFFGAP: ["유효스폰간격", 1.2],
+            V_LVNEXT: ["경험치다음", 0], V_ISPRIME: ["소수냐", 0], V_DIV: ["나누는수", 0],
         },
         "lists": {}, "broadcasts": {
             BR_START: "게임시작", BR_AIM: "조준요청", BR_FIRE: "발사", BR_GEM: "보석생성",
             BR_LEVELUP: "레벨업", BR_UPDONE: "강화완료", BR_DMG: "데미지표시",
         },
-        "blocks": stage_blocks, "comments": {},
+        "blocks": stage_blocks, "comments": stage_cmt,
         "currentCostume": 0,
         "costumes": [{
             "name": "아레나", "dataFormat": "svg", "assetId": bg_md5,
@@ -1442,7 +1571,7 @@ def main():
     mage = {
         "isStage": False, "name": "마법사",
         "variables": {}, "lists": {}, "broadcasts": {},
-        "blocks": mage_blocks, "comments": {},
+        "blocks": mage_blocks, "comments": mage_cmt,
         "currentCostume": 0,
         "costumes": [{
             "name": "mage", "bitmapResolution": 1, "dataFormat": "svg",
@@ -1460,7 +1589,7 @@ def main():
         "variables": {V_BOLTISC: ["복제됨", 0], V_BOLTPIER: ["남은관통", 1],
                       V_BOLTHITCD: ["관통쿨", 0]},
         "lists": {}, "broadcasts": {},
-        "blocks": bolt_blocks, "comments": {},
+        "blocks": bolt_blocks, "comments": bolt_cmt,
         "currentCostume": 0,
         "costumes": [{
             "name": "bolt", "bitmapResolution": 1, "dataFormat": "svg",
@@ -1478,7 +1607,7 @@ def main():
         "variables": {V_EISC: ["복제됨", 0], V_EHP: ["내체력", 1], V_ESPD: ["내속도", 1.2],
                       V_ETYPE: ["적종류", 1], V_EHIT: ["피격쿨", 0]},
         "lists": {}, "broadcasts": {},
-        "blocks": enemy_blocks, "comments": {},
+        "blocks": enemy_blocks, "comments": enemy_cmt,
         "currentCostume": 0,
         "costumes": [
             {"name": "슬라임", "bitmapResolution": 1, "dataFormat": "svg",
@@ -1504,7 +1633,7 @@ def main():
         "isStage": False, "name": "경험치보석",
         "variables": {V_GEMISC: ["복제됨", 0], V_GEMMINE: ["내경험치", 1]},
         "lists": {}, "broadcasts": {},
-        "blocks": gem_blocks, "comments": {},
+        "blocks": gem_blocks, "comments": gem_cmt,
         "currentCostume": 0,
         "costumes": [{
             "name": "gem", "bitmapResolution": 1, "dataFormat": "svg",
@@ -1520,7 +1649,7 @@ def main():
     card = {
         "isStage": False, "name": "강화카드",
         "variables": {}, "lists": {}, "broadcasts": {},
-        "blocks": card_blocks, "comments": {},
+        "blocks": card_blocks, "comments": card_cmt,
         "currentCostume": 0,
         "costumes": [{
             "name": "card", "bitmapResolution": 1, "dataFormat": "svg",
@@ -1536,7 +1665,7 @@ def main():
     gameover = {
         "isStage": False, "name": "게임오버",
         "variables": {}, "lists": {}, "broadcasts": {},
-        "blocks": gameover_blocks, "comments": {},
+        "blocks": gameover_blocks, "comments": gameover_cmt,
         "currentCostume": 0,
         "costumes": [{
             "name": "패배", "bitmapResolution": 1, "dataFormat": "svg",
@@ -1552,7 +1681,7 @@ def main():
     damage = {
         "isStage": False, "name": "데미지",
         "variables": {V_DMGISC: ["복제됨", 0]}, "lists": {}, "broadcasts": {},
-        "blocks": damage_blocks, "comments": {},
+        "blocks": damage_blocks, "comments": damage_cmt,
         "currentCostume": 0,
         "costumes": [
             {"name": str(d), "bitmapResolution": 1, "dataFormat": "svg",

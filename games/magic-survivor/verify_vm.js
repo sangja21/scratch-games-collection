@@ -54,7 +54,7 @@ function check(label, ok, extra) {
 
   // ---- (1) tuning var init (24) ----
   let v = stageVars();
-  console.log('--- (1) tuning init (29 한글 변수) ---');
+  console.log('--- (1) tuning init (30 한글 변수) ---');
   const expect = {
     마법공격력:1, 발사간격:0.6, 마법탄속도:8, 관통:1, 추가발사:1, 이동속도:4,
     최대체력:5, 체력:5, 무적시간:25, 흡수범위:90, 흡수속도:6, 레벨업경험치:5,
@@ -62,11 +62,12 @@ function check(label, ok, extra) {
     약한적_체력:1, 약한적_속도:1.2, 약한적_경험치:1,
     중간적_체력:3, 중간적_속도:0.9, 중간적_경험치:3,
     강한적_체력:6, 강한적_속도:0.6, 강한적_경험치:6,
-    적체력증가:1, 적속도증가:0.05, 스폰감소:0.06, 스폰간격최소:0.4, 레벨업증가:2,
+    적체력증가:1, 적속도증가:0.05, 스폰감소:0.06, 스폰간격최소:0.4,
+    경험치이전:3, 소수보너스:3,
   };
   let initOK = true, bad = [];
   for (const k in expect) if (Number(v[k]) !== Number(expect[k])) { initOK = false; bad.push(`${k}=${v[k]}`); }
-  check('29 tuning vars initialized to defaults', initOK, bad.join(', ') || 'all OK');
+  check('30 tuning vars initialized to defaults', initOK, bad.join(', ') || 'all OK');
   check('진행: 게임상태=1, 생존시간=0, 레벨=1, 경험치=0, 단계=0',
         v.게임상태==1 && v.생존시간==0 && v.레벨==1 && v.경험치==0 && v.단계==0,
         `state=${v.게임상태} time=${v.생존시간} lv=${v.레벨}`);
@@ -200,18 +201,21 @@ function check(label, ok, extra) {
 
   // ---- (6) level-up state machine 1→2→1 + 강화 적용 ----
   console.log('--- (6) 레벨업 → 강화 택1 → 전투 재개 ---');
+  setVar('소수보너스', 0); // 이 구간은 피보나치만 검증 — 소수 보너스가 경험치를 흔들지 않게 격리
   const lvBefore = Number(stageVars().레벨);
   const atkBefore = Number(stageVars().마법공격력);
-  const lvupCost = Number(stageVars().레벨업경험치);
-  const lvupInc = Number(stageVars().레벨업증가);
+  const lvupCost = Number(stageVars().레벨업경험치);   // 현재 항 (curr)
+  const lvupPrev = Number(stageVars().경험치이전);     // 이전 항 (prev)
   setVar('경험치', lvupCost); // exactly one level-up worth
   await sleep(250);
   v = stageVars();
   check('경험치 충족 → 게임상태=2 (강화선택중)', Number(v.게임상태) === 2, `state=${v.게임상태}`);
   check('레벨 +1', Number(v.레벨) === lvBefore + 1, `lv ${lvBefore}→${v.레벨}`);
   check('경험치 -= 레벨업경험치 (→0)', Number(v.경험치) === 0, `경험치=${v.경험치}`);
-  check('레벨업경험치 += 레벨업증가 (다음 레벨이 더 비싸짐)',
-        Number(v.레벨업경험치) === lvupCost + lvupInc, `레벨업경험치 ${lvupCost}→${v.레벨업경험치}`);
+  check('🌀 피보나치: 새 레벨업경험치 = 이전 + 현재 (앞 두 항의 합)',
+        Number(v.레벨업경험치) === lvupPrev + lvupCost, `${lvupPrev}+${lvupCost}=${lvupPrev+lvupCost}, 실제=${v.레벨업경험치}`);
+  check('🌀 피보나치: 경험치이전 ← 직전 현재항', Number(v.경험치이전) === lvupCost, `경험치이전=${v.경험치이전}`);
+  setVar('소수보너스', 3); // 복구
   // pick upgrade 1 (마법공격력+)
   vm.postIOData('keyboard', { key: '1', isDown: true });
   await sleep(120);
@@ -250,6 +254,42 @@ function check(label, ok, extra) {
   const dirs = new Set(clones('마법탄').map(b => Math.round(b.direction)));
   check('동시 발사된 탄들이 부채꼴(서로 다른 방향 >=2)', dirs.size >= 2, `방향수=${dirs.size}`);
   setVar('추가발사', 1); setVar('게임상태', 1); // restore
+
+  // ---- (6c) 🔢 소수 황금 웨이브: 레벨이 소수면 소수냐=1 + 보너스 경험치 ----
+  console.log('--- (6c) 소수 황금 웨이브 (prime check + bonus) ---');
+  const isP = n => { if (n < 2) return false; for (let d = 2; d < n; d++) if (n % d === 0) return false; return true; };
+  // 특정 레벨 N으로 정확히 한 번 레벨업시키고 소수냐/보너스 경험치를 읽는 헬퍼
+  async function levelTo(N, primeBonus) {
+    setVar('게임상태', 1);
+    setVar('레벨', N - 1);
+    setVar('레벨업경험치', 2); setVar('경험치이전', 1); // 싸게 만들어 1회 레벨업
+    setVar('소수보너스', primeBonus);
+    setVar('경험치', 2); // >= 레벨업경험치 → N으로 레벨업
+    await sleep(180);
+    const s = stageVars();
+    const out = { lvl: Number(s.레벨), prime: Number(s.소수냐), exp: Number(s.경험치) };
+    // 강화 카드(게임상태=2) 닫기
+    vm.postIOData('keyboard', { key: '1', isDown: true }); await sleep(70);
+    vm.postIOData('keyboard', { key: '1', isDown: false }); await sleep(180);
+    return out;
+  }
+  const primeLevels = [2, 3, 4, 5, 7, 9, 11, 15];
+  let primeOK = true, primeDetail = [];
+  for (const N of primeLevels) {
+    const r = await levelTo(N, 0); // 보너스 0 → 소수냐 판정만 깨끗하게
+    const ok = (r.prime === 1) === isP(N);
+    if (!ok) primeOK = false;
+    primeDetail.push(`L${N}:${r.prime}${isP(N) ? 'P' : '.'}`);
+  }
+  check('소수 판정 정확 (2,3,5,7,11=소수 / 4,9,15=합성)', primeOK, primeDetail.join(' '));
+  // 보너스: 소수 레벨(7)은 +소수보너스, 합성 레벨(8)은 +0
+  const rPrime = await levelTo(7, 5);   // 7은 소수 → 경험치 = 2-2+5 = 5
+  const rComposite = await levelTo(8, 5); // 8은 합성 → 경험치 = 0
+  check('소수 레벨 도달 시 보너스 경험치 지급 (레벨7 → +소수보너스)', rPrime.exp === 5, `경험치=${rPrime.exp}`);
+  check('합성수 레벨은 보너스 없음 (레벨8 → +0)', rComposite.exp === 0, `경험치=${rComposite.exp}`);
+  // 복구 (이후 섹션이 기본 상태 가정)
+  setVar('레벨', 1); setVar('레벨업경험치', 5); setVar('경험치이전', 3);
+  setVar('소수보너스', 3); setVar('경험치', 0); setVar('게임상태', 1);
 
   // ---- (7) clone counts bounded (no runaway 복제 폭주) ----
   console.log('--- (7) 클론 폭주 가드 ---');
