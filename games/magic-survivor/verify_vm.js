@@ -216,6 +216,36 @@ function check(label, ok, extra) {
   check('강화1 적용: 마법공격력 += 강화량', Number(v.마법공격력) === atkBefore + 1, `atk ${atkBefore}→${v.마법공격력}`);
   check('강화완료 → 게임상태=1 (전투 재개)', Number(v.게임상태) === 1, `state=${v.게임상태}`);
 
+  // ---- (6b) 강화 4번 = 여러발+ (추가발사 증가 → 부채꼴 동시 발사) ----
+  console.log('--- (6b) 강화 4번: 여러발+ (멀티샷) ---');
+  const multiBefore = Number(stageVars().추가발사);
+  const upAmt = Number(stageVars().강화량);
+  setVar('경험치', Number(stageVars().레벨업경험치));
+  await sleep(250);
+  check('재레벨업 → 게임상태=2', Number(stageVars().게임상태) === 2, `state=${stageVars().게임상태}`);
+  vm.postIOData('keyboard', { key: '4', isDown: true });
+  await sleep(120);
+  vm.postIOData('keyboard', { key: '4', isDown: false });
+  await sleep(500);
+  const multiAfter = Number(stageVars().추가발사);
+  check('강화4 적용: 추가발사 += 강화량', multiAfter === multiBefore + upAmt, `추가발사 ${multiBefore}→${multiAfter}`);
+  // 한 번의 발사로 추가발사 수만큼 마법탄이 동시에 생성되는지 (부채꼴)
+  // 자동발사를 잠깐 멈춰(게임상태=2) 우리 한 발만 깨끗하게 센다
+  setVar('게임상태', 2);
+  await sleep(700); // 진행 중이던 자동발사 정착
+  setVar('추가발사', 5);
+  const boltsBefore = clones('마법탄').length;
+  setVar('조준있음', 1); setVar('조준X', 80); setVar('조준Y', 40);
+  setVar('발사X', 80); setVar('발사Y', 40);
+  vm.runtime.startHats('event_whenbroadcastreceived', { BROADCAST_OPTION: '발사' });
+  await sleep(300);
+  const volley = clones('마법탄').length - boltsBefore;
+  check('추가발사=5 → 한 번에 여러 발(>=4) 동시 생성', volley >= 4, `이번 발사로 +${volley}발`);
+  // 부채꼴: 이번 볼리 탄들의 방향이 서로 다른지(>=2 distinct directions)
+  const dirs = new Set(clones('마법탄').map(b => Math.round(b.direction)));
+  check('동시 발사된 탄들이 부채꼴(서로 다른 방향 >=2)', dirs.size >= 2, `방향수=${dirs.size}`);
+  setVar('추가발사', 1); setVar('게임상태', 1); // restore
+
   // ---- (7) clone counts bounded (no runaway 복제 폭주) ----
   console.log('--- (7) 클론 폭주 가드 ---');
   await sleep(1500);

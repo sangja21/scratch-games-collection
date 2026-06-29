@@ -146,19 +146,22 @@ GEM_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" view
   <circle cx="18" cy="13" r="2" fill="#FFFFFF" opacity="0.8"/>
 </svg>"""
 
-# -------- 강화카드: 3선택지 카드 --------
-CARD_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="360" height="170" viewBox="0 0 360 170">
-  <rect x="4" y="4" width="352" height="162" rx="14" fill="#1A237E" opacity="0.95" stroke="#FFD54F" stroke-width="4"/>
-  <text x="180" y="34" text-anchor="middle" fill="#FFD54F" font-family="Arial, sans-serif" font-size="22" font-weight="bold">레벨업! 강화 선택</text>
-  <rect x="20" y="50" width="100" height="100" rx="10" fill="#C62828" stroke="#FFFFFF" stroke-width="2"/>
-  <text x="70" y="90" text-anchor="middle" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="34" font-weight="bold">1</text>
-  <text x="70" y="124" text-anchor="middle" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="15">마법공격력+</text>
-  <rect x="130" y="50" width="100" height="100" rx="10" fill="#2E7D32" stroke="#FFFFFF" stroke-width="2"/>
-  <text x="180" y="90" text-anchor="middle" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="34" font-weight="bold">2</text>
-  <text x="180" y="124" text-anchor="middle" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="15">발사간격-</text>
-  <rect x="240" y="50" width="100" height="100" rx="10" fill="#1565C0" stroke="#FFFFFF" stroke-width="2"/>
-  <text x="290" y="90" text-anchor="middle" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="34" font-weight="bold">3</text>
-  <text x="290" y="124" text-anchor="middle" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="15">이동속도+</text>
+# -------- 강화카드: 4선택지 카드 --------
+CARD_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="400" height="170" viewBox="0 0 400 170">
+  <rect x="4" y="4" width="392" height="162" rx="14" fill="#1A237E" opacity="0.95" stroke="#FFD54F" stroke-width="4"/>
+  <text x="200" y="34" text-anchor="middle" fill="#FFD54F" font-family="Arial, sans-serif" font-size="22" font-weight="bold">레벨업! 강화 선택</text>
+  <rect x="12" y="50" width="88" height="100" rx="10" fill="#C62828" stroke="#FFFFFF" stroke-width="2"/>
+  <text x="56" y="92" text-anchor="middle" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="32" font-weight="bold">1</text>
+  <text x="56" y="124" text-anchor="middle" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="13">마법공격력+</text>
+  <rect x="108" y="50" width="88" height="100" rx="10" fill="#2E7D32" stroke="#FFFFFF" stroke-width="2"/>
+  <text x="152" y="92" text-anchor="middle" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="32" font-weight="bold">2</text>
+  <text x="152" y="124" text-anchor="middle" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="13">발사간격-</text>
+  <rect x="204" y="50" width="88" height="100" rx="10" fill="#1565C0" stroke="#FFFFFF" stroke-width="2"/>
+  <text x="248" y="92" text-anchor="middle" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="32" font-weight="bold">3</text>
+  <text x="248" y="124" text-anchor="middle" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="13">이동속도+</text>
+  <rect x="300" y="50" width="88" height="100" rx="10" fill="#6A1B9A" stroke="#FFFFFF" stroke-width="2"/>
+  <text x="344" y="92" text-anchor="middle" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="32" font-weight="bold">4</text>
+  <text x="344" y="124" text-anchor="middle" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="13">여러발+</text>
 </svg>"""
 
 # -------- 게임오버 배너 --------
@@ -1185,11 +1188,13 @@ def build_card_blocks():
     hb = gen(); bs[hb] = mk("event_whenbroadcastreceived", top=True, x=20, y=200,
         fields={"BROADCAST_OPTION": ["레벨업", BR_LEVELUP]})
     show = gen(); bs[show] = mk("looks_show")
-    k1 = b_keypressed(bs, "1"); k2 = b_keypressed(bs, "2"); k3 = b_keypressed(bs, "3")
+    k1 = b_keypressed(bs, "1"); k2 = b_keypressed(bs, "2")
+    k3 = b_keypressed(bs, "3"); k4 = b_keypressed(bs, "4")
     or12 = bool_op("operator_or", k1, k2)
     or123 = bool_op("operator_or", or12, k3)
-    wu = gen(); bs[wu] = mk("control_wait_until", inputs={"CONDITION": [2, or123]})
-    bs[or123]["parent"] = wu
+    or1234 = bool_op("operator_or", or123, k4)
+    wu = gen(); bs[wu] = mk("control_wait_until", inputs={"CONDITION": [2, or1234]})
+    bs[or1234]["parent"] = wu
     # if key1 → 마법공격력 += 강화량
     up_r1 = vrep("강화량", V_UP)
     ch_atk = b_changevar(bs, "마법공격력", V_ATK, up_r1)
@@ -1209,6 +1214,10 @@ def build_card_blocks():
     up_r3 = vrep("강화량", V_UP)
     ch_move = b_changevar(bs, "이동속도", V_MOVE, up_r3)
     if_k3 = b_if(bs, b_keypressed(bs, "3"), ch_move)
+    # if key4 → 추가발사 += 강화량 (동시에 나가는 마법탄 수 = 부채꼴 발사)
+    up_r4 = vrep("강화량", V_UP)
+    ch_multi = b_changevar(bs, "추가발사", V_MULTI, up_r4)
+    if_k4 = b_if(bs, b_keypressed(bs, "4"), ch_multi)
 
     sh_up, _ = b_sound(bs, 200)
     hi2 = gen(); bs[hi2] = mk("looks_hide")
@@ -1216,7 +1225,7 @@ def build_card_blocks():
     set_st1 = b_setvar(bs, "게임상태", V_STATE, 1)
     bc_done = b_broadcast(bs, "강화완료", BR_UPDONE)
     chain([(hb, bs[hb]), (show, bs[show]), (wu, bs[wu]),
-           (if_k1, bs[if_k1]), (if_k2, bs[if_k2]), (if_k3, bs[if_k3]),
+           (if_k1, bs[if_k1]), (if_k2, bs[if_k2]), (if_k3, bs[if_k3]), (if_k4, bs[if_k4]),
            (sh_up, bs[sh_up]), (hi2, bs[hi2]), (w1, bs[w1]),
            (set_st1, bs[set_st1]), (bc_done, bs[bc_done])])
 
@@ -1507,7 +1516,7 @@ def main():
         "costumes": [{
             "name": "card", "bitmapResolution": 1, "dataFormat": "svg",
             "assetId": card_md5, "md5ext": f"{card_md5}.svg",
-            "rotationCenterX": 180, "rotationCenterY": 85
+            "rotationCenterX": 200, "rotationCenterY": 85
         }],
         "sounds": [pop_sound()],
         "volume": 100, "layerOrder": 7, "visible": False,
