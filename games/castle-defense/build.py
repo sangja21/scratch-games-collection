@@ -271,19 +271,26 @@ ARROWTOWER_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="60" height="7
 
 CANNONTOWER_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="60" height="70" viewBox="0 0 60 70">
   <ellipse cx="30" cy="64" rx="18" ry="4" fill="#000000" opacity="0.25"/>
-  <rect x="16" y="40" width="28" height="24" rx="3" fill="#607D8B" stroke="#37474F" stroke-width="2"/>
-  <circle cx="30" cy="38" r="13" fill="#455A64" stroke="#263238" stroke-width="2"/>
-  <rect x="28" y="10" width="14" height="30" rx="6" fill="#37474F" stroke="#263238" stroke-width="2" transform="rotate(28 35 25)"/>
-  <circle cx="30" cy="38" r="5" fill="#263238"/>
+  <rect x="13" y="46" width="34" height="18" rx="3" fill="#78909C" stroke="#37474F" stroke-width="2"/>
+  <rect x="20" y="40" width="20" height="9" rx="2" fill="#546E7A" stroke="#263238" stroke-width="2"/>
+  <g transform="rotate(-30 30 42)">
+    <rect x="24" y="6" width="14" height="38" rx="7" fill="#263238" stroke="#000000" stroke-width="2"/>
+    <ellipse cx="31" cy="7" rx="7" ry="2.5" fill="#000000"/>
+  </g>
+  <circle cx="46" cy="16" r="6" fill="#212121" stroke="#000000" stroke-width="1"/>
+  <circle cx="30" cy="46" r="4" fill="#263238"/>
 </svg>"""
 
 MAGICTOWER_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="60" height="70" viewBox="0 0 60 70">
   <ellipse cx="30" cy="64" rx="18" ry="4" fill="#000000" opacity="0.25"/>
-  <rect x="20" y="36" width="20" height="28" fill="#7E57C2" stroke="#4527A0" stroke-width="2"/>
-  <polygon points="16,36 44,36 30,14" fill="#9575CD" stroke="#4527A0" stroke-width="2"/>
-  <polygon points="30,6 34,16 30,26 26,16" fill="#4FC3F7" stroke="#0288D1" stroke-width="1.5"/>
-  <circle cx="30" cy="16" r="3" fill="#FFFFFF"/>
-  <rect x="26" y="46" width="8" height="10" fill="#4527A0"/>
+  <rect x="20" y="40" width="20" height="24" fill="#7E57C2" stroke="#4527A0" stroke-width="2"/>
+  <polygon points="16,40 44,40 30,22" fill="#9575CD" stroke="#4527A0" stroke-width="2"/>
+  <rect x="26" y="50" width="8" height="10" fill="#4527A0"/>
+  <circle cx="30" cy="14" r="12" fill="#4FC3F7" opacity="0.30"/>
+  <circle cx="30" cy="14" r="7.5" fill="#4FC3F7" stroke="#0288D1" stroke-width="1.5"/>
+  <circle cx="27" cy="11" r="2.5" fill="#FFFFFF"/>
+  <polygon points="47,9 49,13 47,17 45,13" fill="#FFF59D"/>
+  <polygon points="12,19 13.5,22 12,25 10.5,22" fill="#FFF59D"/>
 </svg>"""
 
 # -------- 포탑탄 코스튬: 화살 / 포탄 / 마법구슬 --------
