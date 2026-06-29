@@ -1478,18 +1478,18 @@ def build_cursor_blocks():
     fe = b_forever(bs, if_on)
     chain([(hb, bs[hb]), (fe, bs[fe])])
 
-    # (C) 클릭 설치
-    hc = gen(); bs[hc] = mk("event_whenthisspriteclicked", top=True, x=380, y=200)
-    # validity gate: not (touching color 길색 or touching 성/팔레트/포탑)
+    # (C) 마우스 '누름'을 폴링해서 설치 — 'when this sprite clicked'는 반투명 사거리 링의
+    #     투명한 가운데를 클릭하면 안 잡혀서(어디 눌러도 설치 안 되던 버그), forever 로 직접 감지.
+    hc = gen(); bs[hc] = mk("event_whenbroadcastreceived", top=True, x=380, y=200,
+        fields={"BROADCAST_OPTION": ["게임시작", BR_START]})
+    # validity gate (팔레트 제외): not (touching color 길색 or touching 성/포탑)
     tc_path = b_touchingcolor(bs, PATH_COLOR)
     tc_castle = b_touching(bs, "성")
-    tc_pal = b_touching(bs, "팔레트")
     tc_tw = b_touching(bs, "포탑")
     or1 = bool_op("operator_or", tc_path, tc_castle)
-    or2 = bool_op("operator_or", or1, tc_pal)
-    or3 = bool_op("operator_or", or2, tc_tw)
-    invalid = gen(); bs[invalid] = mk("operator_not", inputs={"OPERAND": [2, or3]})  # placeholder name
-    bs[or3]["parent"] = invalid
+    or2 = bool_op("operator_or", or1, tc_tw)
+    invalid = gen(); bs[invalid] = mk("operator_not", inputs={"OPERAND": [2, or2]})
+    bs[or2]["parent"] = invalid
 
     def place_branch(price_id, price_nm):
         # if 골드 >= 가격 → 차감·설치·소리, else 에러
@@ -1519,18 +1519,40 @@ def build_cursor_blocks():
     # 설치 불가면 에러
     sh_inv, sp_inv = b_sound(bs, 0, "error")
     if_valid = b_ifelse(bs, invalid, if_price, sh_inv)
-    # 선택포탑>0 and 게임상태=1 가드
+
+    # 클릭 지점으로 커서 이동 → 팔레트 위가 아니면 설치 시도 → 마우스 뗄 때까지 대기(1클릭=1설치)
+    g2x = gen(); bs[g2x] = mk("sensing_mousex"); g2y = gen(); bs[g2y] = mk("sensing_mousey")
+    g2 = gen(); bs[g2] = mk("motion_gotoxy", inputs={"X": slot(g2x), "Y": slot(g2y)})
+    bs[g2x]["parent"] = g2; bs[g2y]["parent"] = g2
+    tc_pal2 = b_touching(bs, "팔레트")
+    notpal = gen(); bs[notpal] = mk("operator_not", inputs={"OPERAND": [2, tc_pal2]})
+    bs[tc_pal2]["parent"] = notpal
+    if_notpal = b_if(bs, notpal, if_valid)            # 팔레트 클릭(선택)은 조용히 무시
+    md2 = gen(); bs[md2] = mk("sensing_mousedown")
+    notmd = gen(); bs[notmd] = mk("operator_not", inputs={"OPERAND": [2, md2]})
+    bs[md2]["parent"] = notmd
+    waitnot = gen(); bs[waitnot] = mk("control_wait_until", inputs={"CONDITION": [2, notmd]})
+    bs[notmd]["parent"] = waitnot
+    chain([(g2, bs[g2]), (if_notpal, bs[if_notpal]), (waitnot, bs[waitnot])])
+
+    # forever: (선택포탑>0 and 게임상태=1 and 마우스 누름) 이면 위 설치 시도
     sel_r2 = vrep("선택포탑", V_SEL); c_sel2 = cmp_op("operator_gt", sel_r2, 0)
     st_r2 = vrep("게임상태", V_STATE); c_pl2 = cmp_op("operator_equals", st_r2, 1)
-    c_can = bool_op("operator_and", c_sel2, c_pl2)
-    if_click = b_if(bs, c_can, if_valid)
-    chain([(hc, bs[hc]), (if_click, bs[if_click])])
+    g1 = bool_op("operator_and", c_sel2, c_pl2)
+    md = gen(); bs[md] = mk("sensing_mousedown")
+    c_can = bool_op("operator_and", g1, md)
+    if_click = b_if(bs, c_can, g2)                    # 본문 머리 = g2 → if_notpal → waitnot
+    w2 = b_wait(bs, 0.01)
+    chain([(if_click, bs[if_click]), (w2, bs[w2])])
+    fe2 = b_forever(bs, if_click)
+    chain([(hc, bs[hc]), (fe2, bs[fe2])])
 
     add_comment(bs, comments, hc,
-        "🧱 길 위·성 위엔 못 지어요.\n"
-        "클릭하면 색깔(길색) 감지로 '길 위인지'를 검사하고, 성·팔레트·다른 포탑과 겹치는지도 봐요. "
-        "안전한 잔디이고 골드가 가격보다 많으면 골드를 깎고 그 자리에 포탑을 세워요!",
-        x=720, y=160, w=340, h=170)
+        "🧱 마우스로 클릭해서 포탑 설치!\n"
+        "팔레트에서 포탑을 고른 뒤(선택포탑>0) 잔디를 클릭하면 그 자리에 세워져요. "
+        "예전엔 반투명 커서를 직접 클릭해야 해서 가운데(투명)를 누르면 안 됐는데, 이제 마우스 누름을 "
+        "직접 감지해 어디를 눌러도 잡혀요. 길·성·다른 포탑 위엔 못 짓고 골드도 가격보다 많아야 해요.",
+        x=720, y=60, w=350, h=190)
 
     return bs, comments
 

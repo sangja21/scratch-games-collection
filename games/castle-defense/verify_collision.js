@@ -90,13 +90,14 @@ function setMouseScratch(sx, sy, isDown) {
   console.log('--- (B) 포탑 배치 유효성: 길색 감지 게이트 (민감도) ---');
   setVar('게임상태', 1);
   setVar('선택포탑', 1);
-  const cursor = orig('건설커서');
-  setMouseScratch(-100, -100, true); // 스프라이트와 안 겹치는 지점
   // (B1) ON-PATH → 설치 거부 (골드 불변, 포탑 클론 불변)
+  // 마우스 누름 → 건설커서 forever 폴링이 직접 감지 (when this sprite clicked 대체)
   ONPATH = true;
   let goldA = Number(sv().골드), twA = clones('포탑').length;
-  vm.runtime.startHats('event_whenthisspriteclicked', null, cursor);
+  setMouseScratch(-100, -100, true);   // 스프라이트와 안 겹치는 지점에 누름
   await sleep(350);
+  setMouseScratch(-100, -100, false);  // 떼기(디바운스 해제)
+  await sleep(80);
   let goldB = Number(sv().골드), twB = clones('포탑').length;
   check('길 위(touching color 길색=true) → 설치 거부: 골드 불변·포탑 미생성', goldB === goldA && twB === twA,
         `골드 ${goldA}→${goldB}, 포탑 ${twA}→${twB}`);
@@ -104,8 +105,9 @@ function setMouseScratch(sx, sy, isDown) {
   ONPATH = false;
   goldA = Number(sv().골드); twA = clones('포탑').length;
   setMouseScratch(-100, -100, true);
-  vm.runtime.startHats('event_whenthisspriteclicked', null, cursor);
   await sleep(350);
+  setMouseScratch(-100, -100, false);
+  await sleep(80);
   goldB = Number(sv().골드); twB = clones('포탑').length;
   check('잔디 위(길색=false) → 설치 성공: 골드 -50·포탑 +1', goldB === goldA - 50 && twB === twA + 1,
         `골드 ${goldA}→${goldB}, 포탑 ${twA}→${twB}`);

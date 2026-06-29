@@ -121,10 +121,12 @@ function setMouseScratch(sx, sy, isDown) {
   setVar('게임상태', 1);
   const goldBefore = Number(stageVars().골드);
   const twBefore = clones('포탑').length;
-  setMouseScratch(-180, 70, true); // grass-or-path: headless touching-color=false → 유효
-  const cursor = orig('건설커서');
-  vm.runtime.startHats('event_whenthisspriteclicked', null, cursor);
+  // 마우스를 (-180,70)에 누름 → 건설커서 forever 폴링이 직접 감지해 설치
+  // (headless 에서 touching-color=false → 잔디로 간주, 유효)
+  setMouseScratch(-180, 70, true);
   await sleep(400);
+  setMouseScratch(-180, 70, false); // 떼기(디바운스 해제 → 1클릭=1설치)
+  await sleep(80);
   v = stageVars();
   const tw = clones('포탑');
   check('설치 시 골드 -화살탑가격(50)', Number(v.골드) === goldBefore - 50, `골드 ${goldBefore}→${v.골드}`);
