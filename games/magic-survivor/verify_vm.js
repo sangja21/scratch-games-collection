@@ -100,13 +100,14 @@ function check(label, ok, extra) {
   check('단계 = floor(생존시간/난이도주기) > 0', Number(v.단계) >= 1,
         `단계=${v.단계} (생존시간=${v.생존시간}, 난이도주기=2)`);
 
-  // ---- (3b) 단계 스케일링: 적이 단계에 비례해 강해진다 ----
-  console.log('--- (3b) 단계 스케일링 (적 체력/속도/스폰 증가) ---');
-  // 단계를 3에 고정(타이머가 floor(생존시간/난이도주기)로 매초 덮어쓰므로
-  // 생존시간=3000, 난이도주기=1000 → 단계가 3으로 유지된다) + 스케일 계수 distinctive
+  // ---- (3b) 레벨 스케일링: 적이 "내 레벨"에 비례해 강해진다 ----
+  console.log('--- (3b) 레벨 스케일링 (적 체력/속도) + 단계 스폰밀도 ---');
+  // 스탯 스케일링 driver = 레벨(플레이어 힘). 레벨=4 → (레벨-1)=3 배수.
+  // 단계는 적 종류/스폰밀도용으로 별도 고정(생존시간=3000, 난이도주기=1000 → 단계=3, 강한 적 스폰)
   setVar('난이도주기', 1000);
   setVar('생존시간', 3000);
   setVar('단계', 3);
+  setVar('레벨', 4);            // (레벨-1)=3 배수로 스탯 스케일
   setVar('적체력증가', 100);
   setVar('적속도증가', 10);
   setVar('스폰간격', 0.3);
@@ -114,21 +115,22 @@ function check(label, ok, extra) {
   await sleep(1200); // 새 적 몇 마리 스폰
   const fresh = clones('적').filter(c => !before.has(c));
   const hpBaseMap = {1:1, 2:3, 3:6}, spdBaseMap = {1:1.2, 2:0.9, 3:0.6};
-  check('단계 고정 후 새 적이 스폰됨', fresh.length >= 1, `fresh=${fresh.length}`);
+  check('레벨 고정 후 새 적이 스폰됨', fresh.length >= 1, `fresh=${fresh.length}`);
   const scaledOK = fresh.length >= 1 && fresh.every(c => {
     const ty = Number(cloneLocal(c, '적종류'));
     return Number(cloneLocal(c, '내체력')) === hpBaseMap[ty] + 3 * 100
         && Math.abs(Number(cloneLocal(c, '내속도')) - (spdBaseMap[ty] + 3 * 10)) < 1e-6;
   });
-  check('새 적 내체력=기본+단계×적체력증가, 내속도=기본+단계×적속도증가', scaledOK,
+  check('새 적 내체력=기본+(레벨-1)×적체력증가, 내속도=기본+(레벨-1)×적속도증가', scaledOK,
         fresh.map(c => `t${cloneLocal(c,'적종류')}:hp${cloneLocal(c,'내체력')}/spd${cloneLocal(c,'내속도')}`).join(' '));
-  // 스폰 밀도: 유효스폰간격 = max(스폰간격최소, 스폰간격 - 단계*스폰감소)
+  // 스폰 밀도는 여전히 단계 기반: 유효스폰간격 = max(스폰간격최소, 스폰간격 - 단계*스폰감소)
   v = stageVars();
   const expEff = Math.max(Number(v.스폰간격최소), Number(v.스폰간격) - 3 * Number(v.스폰감소));
   check('유효스폰간격 = max(스폰간격최소, 스폰간격 - 단계×스폰감소)',
         Math.abs(Number(v.유효스폰간격) - expEff) < 1e-6, `유효=${v.유효스폰간격} 기대=${expEff.toFixed(3)}`);
   // 원상 복구 (이후 섹션이 기본 동작 가정)
-  setVar('적체력증가', 1); setVar('적속도증가', 0.05); setVar('단계', 0); setVar('난이도주기', 2);
+  setVar('적체력증가', 1); setVar('적속도증가', 0.05);
+  setVar('단계', 0); setVar('난이도주기', 2); setVar('레벨', 1);
 
   // ---- (4) auto-aim handshake + auto-fire ----
   console.log('--- (4) 자동 조준 핸드셰이크 + 마법탄 발사 ---');

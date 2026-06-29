@@ -961,13 +961,16 @@ def build_enemy_blocks():
     if_t3 = type_branch(3, V_EHPS, "강한적_체력", V_ESPS, "강한적_속도", "골렘", 95)
     chain([(if_t1, bs[if_t1]), (if_t2, bs[if_t2]), (if_t3, bs[if_t3])])
 
-    # 단계 스케일링: 내체력 += 단계*적체력증가 ; 내속도 += 단계*적속도증가
-    # (생존시간이 길어질수록 같은 종류의 적도 더 단단하고 빨라진다 → 공격력만 올려선 학살 불가)
-    stage_hp = vrep("단계", V_STAGE); ehpsc_r = vrep("적체력증가", V_EHPSCALE)
-    mul_hp = op("operator_multiply", stage_hp, ehpsc_r)
+    # 레벨 스케일링: 내체력 += (레벨-1)*적체력증가 ; 내속도 += (레벨-1)*적속도증가
+    # ★ 시간(단계)이 아니라 플레이어 레벨에 비례시킨다 — 강화로 세지는 만큼 적도 정확히 따라온다.
+    #   (단계로 묶으면 레벨이 훨씬 빨리 올라서 후반에 학살이 됨)
+    lvl_hp = vrep("레벨", V_LEVEL); lvm1_hp = op("operator_subtract", lvl_hp, 1)
+    ehpsc_r = vrep("적체력증가", V_EHPSCALE)
+    mul_hp = op("operator_multiply", lvm1_hp, ehpsc_r)
     hp_scale = b_changevar(bs, "내체력", V_EHP, mul_hp)
-    stage_sp = vrep("단계", V_STAGE); espsc_r = vrep("적속도증가", V_ESPSCALE)
-    mul_sp = op("operator_multiply", stage_sp, espsc_r)
+    lvl_sp = vrep("레벨", V_LEVEL); lvm1_sp = op("operator_subtract", lvl_sp, 1)
+    espsc_r = vrep("적속도증가", V_ESPSCALE)
+    mul_sp = op("operator_multiply", lvm1_sp, espsc_r)
     spd_scale = b_changevar(bs, "내속도", V_ESPD, mul_sp)
     chain([(hp_scale, bs[hp_scale]), (spd_scale, bs[spd_scale])])
 
