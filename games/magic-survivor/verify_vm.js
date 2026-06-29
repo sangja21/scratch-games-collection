@@ -54,7 +54,7 @@ function check(label, ok, extra) {
 
   // ---- (1) tuning var init (24) ----
   let v = stageVars();
-  console.log('--- (1) tuning init (24 한글 변수) ---');
+  console.log('--- (1) tuning init (28 한글 변수) ---');
   const expect = {
     마법공격력:1, 발사간격:0.6, 마법탄속도:8, 관통:1, 추가발사:1, 이동속도:4,
     최대체력:5, 체력:5, 무적시간:25, 흡수범위:90, 흡수속도:6, 레벨업경험치:5,
@@ -62,10 +62,11 @@ function check(label, ok, extra) {
     약한적_체력:1, 약한적_속도:1.2, 약한적_경험치:1,
     중간적_체력:3, 중간적_속도:0.9, 중간적_경험치:3,
     강한적_체력:6, 강한적_속도:0.6, 강한적_경험치:6,
+    적체력증가:1, 적속도증가:0.05, 스폰감소:0.06, 스폰간격최소:0.4,
   };
   let initOK = true, bad = [];
   for (const k in expect) if (Number(v[k]) !== Number(expect[k])) { initOK = false; bad.push(`${k}=${v[k]}`); }
-  check('24 tuning vars initialized to defaults', initOK, bad.join(', ') || 'all OK');
+  check('28 tuning vars initialized to defaults', initOK, bad.join(', ') || 'all OK');
   check('진행: 게임상태=1, 생존시간=0, 레벨=1, 경험치=0, 단계=0',
         v.게임상태==1 && v.생존시간==0 && v.레벨==1 && v.경험치==0 && v.단계==0,
         `state=${v.게임상태} time=${v.생존시간} lv=${v.레벨}`);
@@ -87,9 +88,10 @@ function check(label, ok, extra) {
   const hpMap = {1:1, 2:3, 3:6}, spdMap = {1:1.2, 2:0.9, 3:0.6};
   let statOK = en.every(c => {
     const ty = Number(cloneLocal(c, '적종류'));
-    return Number(cloneLocal(c, '내체력')) === hpMap[ty] && Number(cloneLocal(c, '내속도')) === spdMap[ty];
+    // 단계 스케일링이 base 위에 가산되므로 >= 기본값이어야 한다
+    return Number(cloneLocal(c, '내체력')) >= hpMap[ty] && Number(cloneLocal(c, '내속도')) >= spdMap[ty];
   });
-  check('내체력/내속도가 적종류별 튜닝 변수와 일치', statOK,
+  check('내체력/내속도 >= 적종류별 기본값 (스케일링 가산)', statOK,
         en.map(c => `t${cloneLocal(c,'적종류')}:hp${cloneLocal(c,'내체력')}/spd${cloneLocal(c,'내속도')}`).join(' '));
 
   // ---- (3) survival timer + difficulty stage ----
@@ -97,6 +99,36 @@ function check(label, ok, extra) {
   check('생존시간 증가 (>=2초)', Number(v.생존시간) >= 2, `생존시간=${v.생존시간}`);
   check('단계 = floor(생존시간/난이도주기) > 0', Number(v.단계) >= 1,
         `단계=${v.단계} (생존시간=${v.생존시간}, 난이도주기=2)`);
+
+  // ---- (3b) 단계 스케일링: 적이 단계에 비례해 강해진다 ----
+  console.log('--- (3b) 단계 스케일링 (적 체력/속도/스폰 증가) ---');
+  // 단계를 3에 고정(타이머가 floor(생존시간/난이도주기)로 매초 덮어쓰므로
+  // 생존시간=3000, 난이도주기=1000 → 단계가 3으로 유지된다) + 스케일 계수 distinctive
+  setVar('난이도주기', 1000);
+  setVar('생존시간', 3000);
+  setVar('단계', 3);
+  setVar('적체력증가', 100);
+  setVar('적속도증가', 10);
+  setVar('스폰간격', 0.3);
+  const before = new Set(clones('적'));
+  await sleep(1200); // 새 적 몇 마리 스폰
+  const fresh = clones('적').filter(c => !before.has(c));
+  const hpBaseMap = {1:1, 2:3, 3:6}, spdBaseMap = {1:1.2, 2:0.9, 3:0.6};
+  check('단계 고정 후 새 적이 스폰됨', fresh.length >= 1, `fresh=${fresh.length}`);
+  const scaledOK = fresh.length >= 1 && fresh.every(c => {
+    const ty = Number(cloneLocal(c, '적종류'));
+    return Number(cloneLocal(c, '내체력')) === hpBaseMap[ty] + 3 * 100
+        && Math.abs(Number(cloneLocal(c, '내속도')) - (spdBaseMap[ty] + 3 * 10)) < 1e-6;
+  });
+  check('새 적 내체력=기본+단계×적체력증가, 내속도=기본+단계×적속도증가', scaledOK,
+        fresh.map(c => `t${cloneLocal(c,'적종류')}:hp${cloneLocal(c,'내체력')}/spd${cloneLocal(c,'내속도')}`).join(' '));
+  // 스폰 밀도: 유효스폰간격 = max(스폰간격최소, 스폰간격 - 단계*스폰감소)
+  v = stageVars();
+  const expEff = Math.max(Number(v.스폰간격최소), Number(v.스폰간격) - 3 * Number(v.스폰감소));
+  check('유효스폰간격 = max(스폰간격최소, 스폰간격 - 단계×스폰감소)',
+        Math.abs(Number(v.유효스폰간격) - expEff) < 1e-6, `유효=${v.유효스폰간격} 기대=${expEff.toFixed(3)}`);
+  // 원상 복구 (이후 섹션이 기본 동작 가정)
+  setVar('적체력증가', 1); setVar('적속도증가', 0.05); setVar('단계', 0); setVar('난이도주기', 2);
 
   // ---- (4) auto-aim handshake + auto-fire ----
   console.log('--- (4) 자동 조준 핸드셰이크 + 마법탄 발사 ---');

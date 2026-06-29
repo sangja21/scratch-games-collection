@@ -205,7 +205,7 @@ def chain(seq):
 # ============================================================
 #  IDs  (V_* / var* / BR_* 컨벤션)
 # ============================================================
-# ----- 5.1 튜닝 변수 24개 (개조 손잡이) -----
+# ----- 5.1 튜닝 변수 24개 (개조 손잡이) + 5.1b 스케일링 4개 = 28개 -----
 V_ATK      = "varAtk01"        # 마법공격력   1
 V_FIREGAP  = "varFireGap02"    # 발사간격     0.6
 V_BOLTSPD  = "varBoltSpd03"    # 마법탄속도   8
@@ -231,7 +231,13 @@ V_EHPS     = "varEHPs22"       # 강한적_체력  6
 V_ESPS     = "varESPs23"       # 강한적_속도  0.6
 V_EXPS     = "varEXPs24"       # 강한적_경험치 6
 
-# ----- 5.2 진행/내부 상태 변수 28개 -----
+# ----- 5.1b 난이도 스케일링 튜닝 4개 (단계가 깊어질수록 적도 강해짐) -----
+V_EHPSCALE = "varEHPscale53"   # 적체력증가   1     단계당 모든 적에 더해지는 체력
+V_ESPSCALE = "varESPscale54"   # 적속도증가   0.05  단계당 모든 적에 더해지는 속도
+V_SPDOWN   = "varSpawnDown55"  # 스폰감소     0.06  단계당 줄어드는 스폰간격(초)
+V_SPMIN    = "varSpawnMin56"   # 스폰간격최소  0.4   스폰간격이 내려갈 수 있는 하한
+
+# ----- 5.2 진행/내부 상태 변수 29개 -----
 V_STATE    = "varState25"      # 게임상태  1=전투,2=강화선택,0=게임오버
 V_TIME     = "varTime26"       # 생존시간 (점수)
 V_LEVEL    = "varLevel27"      # 레벨
@@ -260,6 +266,7 @@ V_DMGDIGIT = "varDmgDigit49"   # 데미지숫자
 V_DMGOFF   = "varDmgOff50"     # 데미지오프셋
 V_DMGLEN   = "varDmgLen51"     # 데미지글자수
 V_DMGPOS   = "varDmgPos52"     # 데미지자리
+V_EFFGAP   = "varEffGap57"     # 유효스폰간격 (단계 반영해 계산되는 실제 스폰 대기시간)
 
 # ----- 5.3 클론-로컬 변수 11개 -----
 V_BOLTISC   = "varBoltIsClone"   # 마법탄: 복제됨
@@ -446,7 +453,7 @@ def build_stage_blocks():
     bs = {}
     vrep, op, cmp_op, bool_op = make_helpers(bs)
 
-    # ===== (A) 깃발 클릭 → 변수 52개 전부 초기화(한 곳에 모음) → 게임시작 =====
+    # ===== (A) 깃발 클릭 → 변수 57개 전부 초기화(한 곳에 모음) → 게임시작 =====
     h = gen(); bs[h] = mk("event_whenflagclicked", top=True, x=20, y=20)
     seq = [(h, bs[h])]
     def add_set(name, vid, val):
@@ -477,6 +484,11 @@ def build_stage_blocks():
     add_set("강한적_체력", V_EHPS, 6)
     add_set("강한적_속도", V_ESPS, 0.6)
     add_set("강한적_경험치", V_EXPS, 6)
+    # 난이도 스케일링 4개 — 단계가 깊어질수록 적도 강해진다
+    add_set("적체력증가", V_EHPSCALE, 1)
+    add_set("적속도증가", V_ESPSCALE, 0.05)
+    add_set("스폰감소", V_SPDOWN, 0.06)
+    add_set("스폰간격최소", V_SPMIN, 0.4)
     # 체력 = 최대체력 (튜닝 변수, 최대체력 참조)
     maxhp_r = vrep("최대체력", V_MAXHP)
     set_hp = b_setvar(bs, "체력", V_HP, maxhp_r)
@@ -511,6 +523,7 @@ def build_stage_blocks():
     add_set("데미지오프셋", V_DMGOFF, 0)
     add_set("데미지글자수", V_DMGLEN, 0)
     add_set("데미지자리", V_DMGPOS, 0)
+    add_set("유효스폰간격", V_EFFGAP, 1.2)
 
     w1 = b_wait(bs, 0.3); seq.append((w1, bs[w1]))
     bc_start = b_broadcast(bs, "게임시작", BR_START); seq.append((bc_start, bs[bc_start]))
@@ -900,8 +913,21 @@ def build_enemy_blocks():
     state_b = vrep("게임상태", V_STATE)
     cond_play_b = cmp_op("operator_equals", state_b, 1)
     if_play_b = b_if(bs, cond_play_b, if_edge)
-    w_gap = b_wait_var(bs, V_SPAWNGAP, "스폰간격")
-    chain([(if_play_b, bs[if_play_b]), (w_gap, bs[w_gap])])
+    # 유효스폰간격 = 스폰간격 - 단계*스폰감소, 단 스폰간격최소 밑으로는 안 내려감
+    # (단계가 깊어질수록 적이 더 자주 쏟아진다)
+    stage_g = vrep("단계", V_STAGE); spdown_r = vrep("스폰감소", V_SPDOWN)
+    mul_g = op("operator_multiply", stage_g, spdown_r)
+    gapbase_r = vrep("스폰간격", V_SPAWNGAP)
+    sub_g = op("operator_subtract", gapbase_r, mul_g)
+    set_eff = b_setvar(bs, "유효스폰간격", V_EFFGAP, sub_g)
+    eff_r = vrep("유효스폰간격", V_EFFGAP); spmin_r = vrep("스폰간격최소", V_SPMIN)
+    cond_below_min = cmp_op("operator_lt", eff_r, spmin_r)
+    spmin_set_r = vrep("스폰간격최소", V_SPMIN)
+    set_eff_min = b_setvar(bs, "유효스폰간격", V_EFFGAP, spmin_set_r)
+    if_clamp = b_if(bs, cond_below_min, set_eff_min)
+    w_gap = b_wait_var(bs, V_EFFGAP, "유효스폰간격")
+    chain([(if_play_b, bs[if_play_b]), (set_eff, bs[set_eff]),
+           (if_clamp, bs[if_clamp]), (w_gap, bs[w_gap])])
     fe_b = b_forever(bs, if_play_b)
     if_spawner = b_if(bs, cond_orig, fe_b)
     chain([(hb, bs[hb]), (if_spawner, bs[if_spawner])])
@@ -931,6 +957,16 @@ def build_enemy_blocks():
     if_t2 = type_branch(2, V_EHPM, "중간적_체력", V_ESPM, "중간적_속도", "박쥐", 70)
     if_t3 = type_branch(3, V_EHPS, "강한적_체력", V_ESPS, "강한적_속도", "골렘", 95)
     chain([(if_t1, bs[if_t1]), (if_t2, bs[if_t2]), (if_t3, bs[if_t3])])
+
+    # 단계 스케일링: 내체력 += 단계*적체력증가 ; 내속도 += 단계*적속도증가
+    # (생존시간이 길어질수록 같은 종류의 적도 더 단단하고 빨라진다 → 공격력만 올려선 학살 불가)
+    stage_hp = vrep("단계", V_STAGE); ehpsc_r = vrep("적체력증가", V_EHPSCALE)
+    mul_hp = op("operator_multiply", stage_hp, ehpsc_r)
+    hp_scale = b_changevar(bs, "내체력", V_EHP, mul_hp)
+    stage_sp = vrep("단계", V_STAGE); espsc_r = vrep("적속도증가", V_ESPSCALE)
+    mul_sp = op("operator_multiply", stage_sp, espsc_r)
+    spd_scale = b_changevar(bs, "내속도", V_ESPD, mul_sp)
+    chain([(hp_scale, bs[hp_scale]), (spd_scale, bs[spd_scale])])
 
     spx_r = vrep("적생성X", V_SPX); spy_r = vrep("적생성Y", V_SPY)
     g = gen(); bs[g] = mk("motion_gotoxy", inputs={"X": slot(spx_r), "Y": slot(spy_r)})
@@ -1026,7 +1062,8 @@ def build_enemy_blocks():
     fe_body = b_forever(bs, body[0])
     chain([(ch, bs[ch]), (set_isc1, bs[set_isc1])])
     chain([(set_hit0, bs[set_hit0]), (if_t1, bs[if_t1])])
-    chain([(if_t3, bs[if_t3]), (g, bs[g]), (show, bs[show]), (fe_body, bs[fe_body])])
+    chain([(if_t3, bs[if_t3]), (hp_scale, bs[hp_scale]), (spd_scale, bs[spd_scale]),
+           (g, bs[g]), (show, bs[show]), (fe_body, bs[fe_body])])
 
     # (D) 조준 보고 (최솟값 리덕션) — wait 없는 원자 실행
     hd = gen(); bs[hd] = mk("control_start_as_clone", top=True, x=400, y=460)
@@ -1340,7 +1377,7 @@ def main():
         "format": "", "rate": 11025, "sampleCount": 258, "md5ext": f"{pop_md5}.wav"
     }
 
-    # ---- Stage: 전역 변수 52개 + 방송 7개 ----
+    # ---- Stage: 전역 변수 57개 (튜닝28+진행29) + 방송 7개 ----
     stage = {
         "isStage": True, "name": "Stage",
         "variables": {
@@ -1353,7 +1390,10 @@ def main():
             V_EHPW: ["약한적_체력", 1], V_ESPW: ["약한적_속도", 1.2], V_EXPW: ["약한적_경험치", 1],
             V_EHPM: ["중간적_체력", 3], V_ESPM: ["중간적_속도", 0.9], V_EXPM: ["중간적_경험치", 3],
             V_EHPS: ["강한적_체력", 6], V_ESPS: ["강한적_속도", 0.6], V_EXPS: ["강한적_경험치", 6],
-            # 진행 28
+            # 난이도 스케일링 4
+            V_EHPSCALE: ["적체력증가", 1], V_ESPSCALE: ["적속도증가", 0.05],
+            V_SPDOWN: ["스폰감소", 0.06], V_SPMIN: ["스폰간격최소", 0.4],
+            # 진행 29
             V_STATE: ["게임상태", 1], V_TIME: ["생존시간", 0], V_LEVEL: ["레벨", 1],
             V_EXP: ["경험치", 0], V_INVT: ["무적", 0], V_STAGE: ["단계", 0],
             V_SPAWNN: ["스폰카운트", 0], V_ALIVE: ["적수", 0], V_AIMD: ["조준거리", 99999],
@@ -1364,6 +1404,7 @@ def main():
             V_DMGVAL: ["데미지표시값", 0], V_DMGX: ["데미지표시x", 0], V_DMGY: ["데미지표시y", 0],
             V_DMGDIGIT: ["데미지숫자", 0], V_DMGOFF: ["데미지오프셋", 0],
             V_DMGLEN: ["데미지글자수", 0], V_DMGPOS: ["데미지자리", 0],
+            V_EFFGAP: ["유효스폰간격", 1.2],
         },
         "lists": {}, "broadcasts": {
             BR_START: "게임시작", BR_AIM: "조준요청", BR_FIRE: "발사", BR_GEM: "보석생성",
