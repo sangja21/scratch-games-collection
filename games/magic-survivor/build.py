@@ -208,7 +208,7 @@ def chain(seq):
 # ============================================================
 #  IDs  (V_* / var* / BR_* 컨벤션)
 # ============================================================
-# ----- 5.1 튜닝 변수 24개 (개조 손잡이) + 5.1b 스케일링 4개 = 28개 -----
+# ----- 5.1 튜닝 변수 24개 (개조 손잡이) + 5.1b 스케일링 5개 = 29개 -----
 V_ATK      = "varAtk01"        # 마법공격력   1
 V_FIREGAP  = "varFireGap02"    # 발사간격     0.6
 V_BOLTSPD  = "varBoltSpd03"    # 마법탄속도   8
@@ -239,6 +239,7 @@ V_EHPSCALE = "varEHPscale53"   # 적체력증가   1     단계당 모든 적에
 V_ESPSCALE = "varESPscale54"   # 적속도증가   0.05  단계당 모든 적에 더해지는 속도
 V_SPDOWN   = "varSpawnDown55"  # 스폰감소     0.06  단계당 줄어드는 스폰간격(초)
 V_SPMIN    = "varSpawnMin56"   # 스폰간격최소  0.4   스폰간격이 내려갈 수 있는 하한
+V_LVUPINC  = "varLvUpInc58"    # 레벨업증가   2     레벨업마다 다음 레벨업경험치가 늘어나는 양
 
 # ----- 5.2 진행/내부 상태 변수 29개 -----
 V_STATE    = "varState25"      # 게임상태  1=전투,2=강화선택,0=게임오버
@@ -456,7 +457,7 @@ def build_stage_blocks():
     bs = {}
     vrep, op, cmp_op, bool_op = make_helpers(bs)
 
-    # ===== (A) 깃발 클릭 → 변수 57개 전부 초기화(한 곳에 모음) → 게임시작 =====
+    # ===== (A) 깃발 클릭 → 변수 58개 전부 초기화(한 곳에 모음) → 게임시작 =====
     h = gen(); bs[h] = mk("event_whenflagclicked", top=True, x=20, y=20)
     seq = [(h, bs[h])]
     def add_set(name, vid, val):
@@ -487,11 +488,12 @@ def build_stage_blocks():
     add_set("강한적_체력", V_EHPS, 6)
     add_set("강한적_속도", V_ESPS, 0.6)
     add_set("강한적_경험치", V_EXPS, 6)
-    # 난이도 스케일링 4개 — 단계가 깊어질수록 적도 강해진다
+    # 난이도 스케일링 5개 — 적이 내 레벨에 비례해 강해지고, 레벨업은 점점 비싸진다
     add_set("적체력증가", V_EHPSCALE, 1)
     add_set("적속도증가", V_ESPSCALE, 0.05)
     add_set("스폰감소", V_SPDOWN, 0.06)
     add_set("스폰간격최소", V_SPMIN, 0.4)
+    add_set("레벨업증가", V_LVUPINC, 2)
     # 체력 = 최대체력 (튜닝 변수, 최대체력 참조)
     maxhp_r = vrep("최대체력", V_MAXHP)
     set_hp = b_setvar(bs, "체력", V_HP, maxhp_r)
@@ -581,9 +583,12 @@ def build_stage_blocks():
     neg_lvup = op("operator_subtract", 0, lvup_r2)
     dec_exp = b_changevar(bs, "경험치", V_EXP, neg_lvup)
     inc_level = b_changevar(bs, "레벨", V_LEVEL, 1)
+    # 다음 레벨업은 더 비싸진다: 레벨업경험치 += 레벨업증가 (성장 곡선이 완만해짐)
+    lvupinc_r = vrep("레벨업증가", V_LVUPINC)
+    inc_cost = b_changevar(bs, "레벨업경험치", V_LVUP, lvupinc_r)
     set_st2 = b_setvar(bs, "게임상태", V_STATE, 2)
     bc_lvup = b_broadcast(bs, "레벨업", BR_LEVELUP)
-    chain([(dec_exp, bs[dec_exp]), (inc_level, bs[inc_level]),
+    chain([(dec_exp, bs[dec_exp]), (inc_level, bs[inc_level]), (inc_cost, bs[inc_cost]),
            (set_st2, bs[set_st2]), (bc_lvup, bs[bc_lvup])])
     if_levelup = b_if(bs, cond_levelup, dec_exp)
 
@@ -1389,7 +1394,7 @@ def main():
         "format": "", "rate": 11025, "sampleCount": 258, "md5ext": f"{pop_md5}.wav"
     }
 
-    # ---- Stage: 전역 변수 57개 (튜닝28+진행29) + 방송 7개 ----
+    # ---- Stage: 전역 변수 58개 (튜닝29+진행29) + 방송 7개 ----
     stage = {
         "isStage": True, "name": "Stage",
         "variables": {
@@ -1402,9 +1407,10 @@ def main():
             V_EHPW: ["약한적_체력", 1], V_ESPW: ["약한적_속도", 1.2], V_EXPW: ["약한적_경험치", 1],
             V_EHPM: ["중간적_체력", 3], V_ESPM: ["중간적_속도", 0.9], V_EXPM: ["중간적_경험치", 3],
             V_EHPS: ["강한적_체력", 6], V_ESPS: ["강한적_속도", 0.6], V_EXPS: ["강한적_경험치", 6],
-            # 난이도 스케일링 4
+            # 난이도 스케일링 5 (적체력/속도증가 + 스폰감소/최소 + 레벨업증가)
             V_EHPSCALE: ["적체력증가", 1], V_ESPSCALE: ["적속도증가", 0.05],
             V_SPDOWN: ["스폰감소", 0.06], V_SPMIN: ["스폰간격최소", 0.4],
+            V_LVUPINC: ["레벨업증가", 2],
             # 진행 29
             V_STATE: ["게임상태", 1], V_TIME: ["생존시간", 0], V_LEVEL: ["레벨", 1],
             V_EXP: ["경험치", 0], V_INVT: ["무적", 0], V_STAGE: ["단계", 0],

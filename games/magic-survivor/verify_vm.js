@@ -54,7 +54,7 @@ function check(label, ok, extra) {
 
   // ---- (1) tuning var init (24) ----
   let v = stageVars();
-  console.log('--- (1) tuning init (28 한글 변수) ---');
+  console.log('--- (1) tuning init (29 한글 변수) ---');
   const expect = {
     마법공격력:1, 발사간격:0.6, 마법탄속도:8, 관통:1, 추가발사:1, 이동속도:4,
     최대체력:5, 체력:5, 무적시간:25, 흡수범위:90, 흡수속도:6, 레벨업경험치:5,
@@ -62,11 +62,11 @@ function check(label, ok, extra) {
     약한적_체력:1, 약한적_속도:1.2, 약한적_경험치:1,
     중간적_체력:3, 중간적_속도:0.9, 중간적_경험치:3,
     강한적_체력:6, 강한적_속도:0.6, 강한적_경험치:6,
-    적체력증가:1, 적속도증가:0.05, 스폰감소:0.06, 스폰간격최소:0.4,
+    적체력증가:1, 적속도증가:0.05, 스폰감소:0.06, 스폰간격최소:0.4, 레벨업증가:2,
   };
   let initOK = true, bad = [];
   for (const k in expect) if (Number(v[k]) !== Number(expect[k])) { initOK = false; bad.push(`${k}=${v[k]}`); }
-  check('28 tuning vars initialized to defaults', initOK, bad.join(', ') || 'all OK');
+  check('29 tuning vars initialized to defaults', initOK, bad.join(', ') || 'all OK');
   check('진행: 게임상태=1, 생존시간=0, 레벨=1, 경험치=0, 단계=0',
         v.게임상태==1 && v.생존시간==0 && v.레벨==1 && v.경험치==0 && v.단계==0,
         `state=${v.게임상태} time=${v.생존시간} lv=${v.레벨}`);
@@ -203,12 +203,15 @@ function check(label, ok, extra) {
   const lvBefore = Number(stageVars().레벨);
   const atkBefore = Number(stageVars().마법공격력);
   const lvupCost = Number(stageVars().레벨업경험치);
+  const lvupInc = Number(stageVars().레벨업증가);
   setVar('경험치', lvupCost); // exactly one level-up worth
   await sleep(250);
   v = stageVars();
   check('경험치 충족 → 게임상태=2 (강화선택중)', Number(v.게임상태) === 2, `state=${v.게임상태}`);
   check('레벨 +1', Number(v.레벨) === lvBefore + 1, `lv ${lvBefore}→${v.레벨}`);
   check('경험치 -= 레벨업경험치 (→0)', Number(v.경험치) === 0, `경험치=${v.경험치}`);
+  check('레벨업경험치 += 레벨업증가 (다음 레벨이 더 비싸짐)',
+        Number(v.레벨업경험치) === lvupCost + lvupInc, `레벨업경험치 ${lvupCost}→${v.레벨업경험치}`);
   // pick upgrade 1 (마법공격력+)
   vm.postIOData('keyboard', { key: '1', isDown: true });
   await sleep(120);
