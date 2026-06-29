@@ -305,12 +305,13 @@ MAGICORB_SVG = f"""<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40
   <circle cx="20" cy="20" r="3" fill="#FFFFFF"/>
 </svg>"""
 
-# -------- 건설커서: 반투명 사거리 링 + 중앙 마커 --------
+# -------- 건설커서: 작은 설치 마커(십자선) — 충돌 판정이 '중앙 점'만 되도록 작게 유지 --------
+# (예전엔 r=54 큰 사거리 원이라 touching 판정 footprint 가 지름 108px → 길에 항상 걸려 설치가 거의 불가했음.
+#  큰 원을 없애 커서의 불투명 픽셀을 중앙 작은 마커로 줄임 → 중앙이 잔디면 어디든 설치 가능.)
 CURSOR_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
-  <circle cx="60" cy="60" r="54" fill="#FFFFFF" opacity="0.12" stroke="#FFFFFF" stroke-width="3" stroke-dasharray="8 6"/>
-  <circle cx="60" cy="60" r="10" fill="#FFEB3B" opacity="0.8" stroke="#F57F17" stroke-width="2"/>
-  <line x1="60" y1="50" x2="60" y2="70" stroke="#F57F17" stroke-width="2"/>
-  <line x1="50" y1="60" x2="70" y2="60" stroke="#F57F17" stroke-width="2"/>
+  <circle cx="60" cy="60" r="8" fill="#FFEB3B" opacity="0.85" stroke="#F57F17" stroke-width="2"/>
+  <line x1="60" y1="51" x2="60" y2="69" stroke="#F57F17" stroke-width="3"/>
+  <line x1="51" y1="60" x2="69" y2="60" stroke="#F57F17" stroke-width="3"/>
 </svg>"""
 
 # -------- 팔레트 (3버튼; 해금 상태별 4코스튬) --------
