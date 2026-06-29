@@ -14,7 +14,7 @@
     클론 스포너 + 복제됨 가드 / 폭발 연출 / 전용 합성 효과음(_wav_bytes·synth_*) /
     add_comment 가이드 투어.
 
-★ 모든 조절 값(38개)을 한글 전역 변수로만 노출, 코드 어디서도 매직넘버를 쓰지
+★ 모든 조절 값(40개)을 한글 전역 변수로만 노출, 코드 어디서도 매직넘버를 쓰지
   않는다(연출용 repeat 5 / 도달반경 비교 같은 소수 인라인만 허용). 초기화는 전부
   Stage 깃발 클릭 한 스크립트에 모은다. 길은 경로X/경로Y 리스트 6점.
 """
@@ -159,6 +159,17 @@ def synth_upgrade(rate=SND_RATE):
         f = 523 if t < 0.1 else (659 if t < 0.2 else 784)
         env = math.exp(-((t % 0.1)) * 14)
         out.append(math.sin(2 * math.pi * f * t) * env * 0.45)
+    return out
+
+def synth_repair(rate=SND_RATE):
+    """성 수리 — 따뜻한 '띠링' 회복음 (660→880Hz 두 톤 상승 + 살짝 화음, 0.22초)."""
+    N = int(rate * 0.22); out = []
+    for i in range(N):
+        t = i / rate
+        f = 660 if t < 0.09 else 880
+        env = math.exp(-((t % 0.09)) * 10)
+        s = (math.sin(2 * math.pi * f * t) + 0.4 * math.sin(2 * math.pi * f * 1.5 * t)) / 1.4
+        out.append(s * env * 0.45)
     return out
 
 # ============================================================
@@ -321,26 +332,39 @@ CURSOR_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120"
   <line x1="51" y1="60" x2="69" y2="60" stroke="#F57F17" stroke-width="3"/>
 </svg>"""
 
-# -------- 팔레트 (3버튼; 해금 상태별 4코스튬) --------
+# -------- 팔레트 (4버튼: 화살/대포/마법 + 성수리; 해금 상태별 4코스튬) --------
+#  가로 472px 로 넓혀 4번째 '성수리' 버튼(항상 사용 가능)을 추가. 버튼 폭 112, 간격 4.
+#  버튼 중심 SVG x: 62 / 178 / 294 / 410 → rotationCenterX=236 기준 scratch x: -174/-58/58/174.
+PAL_W  = 472
+PAL_BW = 112                       # 버튼 폭
+def _pal_btnx(i):                  # 1..4 버튼 좌측 x
+    return 6 + (i - 1) * (PAL_BW + 4)
 def _palette_svg(cannon_unlocked, magic_unlocked):
+    cx = PAL_BW // 2
     def btn(x, color, n, label, price, locked):
         op = "0.45" if locked else "1"
-        lock = (f'<text x="{x+58}" y="32" text-anchor="middle" font-family="Arial" '
+        lock = (f'<text x="{x+cx}" y="32" text-anchor="middle" font-family="Arial" '
                 f'font-size="20">🔒</text>') if locked else ""
         return (f'<g opacity="{op}">'
-                f'<rect x="{x}" y="8" width="116" height="54" rx="8" fill="{color}" '
+                f'<rect x="{x}" y="8" width="{PAL_BW}" height="54" rx="8" fill="{color}" '
                 f'stroke="#FFFFFF" stroke-width="2"/>'
-                f'<text x="{x+12}" y="34" font-family="Arial" font-size="20" font-weight="bold" '
+                f'<text x="{x+10}" y="34" font-family="Arial" font-size="20" font-weight="bold" '
                 f'fill="#FFFFFF">{n}</text>'
-                f'<text x="{x+58}" y="30" text-anchor="middle" font-family="Arial" font-size="13" '
+                f'<text x="{x+cx}" y="30" text-anchor="middle" font-family="Arial" font-size="13" '
                 f'fill="#FFFFFF">{label}</text>'
-                f'<text x="{x+58}" y="50" text-anchor="middle" font-family="Arial" font-size="13" '
+                f'<text x="{x+cx}" y="50" text-anchor="middle" font-family="Arial" font-size="13" '
                 f'fill="#FFF59D">{price}</text></g>') + lock
-    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="360" height="70" viewBox="0 0 360 70">
-  <rect x="0" y="0" width="360" height="70" rx="10" fill="#263238" opacity="0.92" stroke="#FFD54F" stroke-width="2"/>
-  {btn(6, "#2E7D32", "1", "화살탑", "50", False)}
-  {btn(122, "#1565C0", "2", "대포탑", "100", not cannon_unlocked)}
-  {btn(238, "#6A1B9A", "3", "마법탑", "150", not magic_unlocked)}
+    def cross(gx, gy, s, color="#69F0AE"):   # 녹십자 아이콘 (성수리 표식)
+        return (f'<rect x="{gx-s}" y="{gy-s/3:.1f}" width="{2*s}" height="{2*s/3:.1f}" rx="1" fill="{color}"/>'
+                f'<rect x="{gx-s/3:.1f}" y="{gy-s}" width="{2*s/3:.1f}" height="{2*s}" rx="1" fill="{color}"/>')
+    x4 = _pal_btnx(4)
+    repair = btn(x4, "#C62828", "4", "성수리", "60", False) + cross(x4 + PAL_BW - 16, 18, 6)
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="{PAL_W}" height="70" viewBox="0 0 {PAL_W} 70">
+  <rect x="0" y="0" width="{PAL_W}" height="70" rx="10" fill="#263238" opacity="0.92" stroke="#FFD54F" stroke-width="2"/>
+  {btn(_pal_btnx(1), "#2E7D32", "1", "화살탑", "50", False)}
+  {btn(_pal_btnx(2), "#1565C0", "2", "대포탑", "100", not cannon_unlocked)}
+  {btn(_pal_btnx(3), "#6A1B9A", "3", "마법탑", "150", not magic_unlocked)}
+  {repair}
 </svg>"""
 
 PALETTE_SVGS = [
@@ -349,6 +373,12 @@ PALETTE_SVGS = [
     _palette_svg(False, True),    # 마법해금
     _palette_svg(True,  True),    # 모두해금
 ]
+
+# -------- 선택표시: 지금 고른 포탑 버튼을 노란 테두리로 강조 (별도 스프라이트) --------
+HIGHLIGHT_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="120" height="64" viewBox="0 0 120 64">
+  <rect x="3" y="3" width="114" height="58" rx="10" fill="#FFEB3B" opacity="0.18"/>
+  <rect x="3" y="3" width="114" height="58" rx="10" fill="none" stroke="#FFEB3B" stroke-width="5"/>
+</svg>"""
 
 # -------- 강화카드: 4선택지 --------
 CARD_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="400" height="150" viewBox="0 0 400 150">
@@ -423,7 +453,7 @@ def add_comment(bs, comments, block_id, text, x=520, y=40, w=300, h=160):
 # ============================================================
 #  IDs
 # ============================================================
-# ----- 5.1 튜닝 38 (개조 손잡이) -----
+# ----- 5.1 튜닝 40 (개조 손잡이) -----
 V_GOLD0     = "varGold01"        # 기본골드 150
 V_COSTA     = "varCostArrow02"   # 화살탑가격 50
 V_COSTC     = "varCostCannon03"  # 대포탑가격 100
@@ -462,6 +492,8 @@ V_MAR       = "varMaR35"         # 마법탑_사거리 150
 V_MAD       = "varMaD36"         # 마법탑_공격력 4
 V_MAG       = "varMaG37"         # 마법탑_간격 0.85
 V_MAS       = "varMaS38"         # 마법탑_폭발반경 20
+V_REPAIRCOST= "varRepairCost39"  # 수리비용 60   (튜닝 39)
+V_REPAIRAMT = "varRepairAmt40"   # 수리량 5      (튜닝 40)
 
 # ----- 5.2 진행/내부 상태 40 -----
 V_STATE   = "varState39"      # 게임상태 1
@@ -812,6 +844,8 @@ def build_stage_blocks():
     add_set("마법탑_공격력", V_MAD, 5)
     add_set("마법탑_간격", V_MAG, 0.85)
     add_set("마법탑_폭발반경", V_MAS, 20)
+    add_set("수리비용", V_REPAIRCOST, 60)
+    add_set("수리량", V_REPAIRAMT, 5)
 
     # ── 진행 상태 40 (골드=기본골드, 성체력=성최대체력 참조) ──
     add_set("게임상태", V_STATE, 1)
@@ -1606,23 +1640,59 @@ def build_palette_blocks():
     fe = b_forever(bs, if_cos)
     chain([(hb, bs[hb]), (fe, bs[fe])])
 
-    # 클릭 → 선택포탑 (해금된 것만)
+    # 클릭 → 4구간 판정 (버튼 경계 scratch x: -116 / 0 / 116)
+    #   x<-116 → 화살탑(1) ; <0 → 대포탑(2, 해금시) ; <116 → 마법탑(3, 해금시) ; 그밖 → 성수리(즉시)
     hc = gen(); bs[hc] = mk("event_whenthisspriteclicked", top=True, x=380, y=220)
+    # 1구간: 선택포탑=1
     set_sel1 = b_setvar(bs, "선택포탑", V_SEL, 1)
+    # 2구간: if 대포해금=1 → 선택포탑=2
     set_sel2 = b_setvar(bs, "선택포탑", V_SEL, 2)
     ca1 = cmp_op("operator_equals", vrep("대포탑해금", V_UNCA), 1)
     if_ca = b_if(bs, ca1, set_sel2)
+    # 3구간: if 마법해금=1 → 선택포탑=3
     set_sel3 = b_setvar(bs, "선택포탑", V_SEL, 3)
     ma1 = cmp_op("operator_equals", vrep("마법탑해금", V_UNMA), 1)
     if_ma = b_if(bs, ma1, set_sel3)
-    # mouse x < -60 → 1 ; < 60 → if 대포 ; else → if 마법
-    mxx = gen(); bs[mxx] = mk("sensing_mousex")
-    c_mid = cmp_op("operator_lt", mxx, 60)
-    if_mid = b_ifelse(bs, c_mid, if_ca, if_ma)
-    mxx2 = gen(); bs[mxx2] = mk("sensing_mousex")
-    c_left = cmp_op("operator_lt", mxx2, -60)
-    if_click = b_ifelse(bs, c_left, set_sel1, if_mid)
+    # 4구간(성수리): 즉시 액션 — 선택포탑은 그대로!
+    #   if 골드>=수리비용 and 성체력<성최대체력 → 골드-=수리비용 ; 성체력+=수리량 ; 상한 클램프 ; 수리음
+    #   else → 에러음 (변화 없음)
+    gold_r = vrep("골드", V_GOLDCUR); cost_r = vrep("수리비용", V_REPAIRCOST)
+    c_poor = cmp_op("operator_lt", gold_r, cost_r)           # 골드 < 수리비용
+    c_gold = gen(); bs[c_gold] = mk("operator_not", inputs={"OPERAND": [2, c_poor]})
+    bs[c_poor]["parent"] = c_gold                            # 골드 >= 수리비용
+    castle_r = vrep("성체력", V_CASTLE); cmax_r = vrep("성최대체력", V_CASTLEMAX)
+    c_notfull = cmp_op("operator_lt", castle_r, cmax_r)      # 성체력 < 성최대체력
+    c_can = bool_op("operator_and", c_gold, c_notfull)
+    neg_cost = op("operator_subtract", 0, vrep("수리비용", V_REPAIRCOST))
+    dec_gold = b_changevar(bs, "골드", V_GOLDCUR, neg_cost)
+    add_hp = b_changevar(bs, "성체력", V_CASTLE, vrep("수리량", V_REPAIRAMT))
+    castle_r2 = vrep("성체력", V_CASTLE); cmax_r2 = vrep("성최대체력", V_CASTLEMAX)
+    c_over = cmp_op("operator_gt", castle_r2, cmax_r2)       # 성체력 > 성최대체력
+    set_clamp = b_setvar(bs, "성체력", V_CASTLE, vrep("성최대체력", V_CASTLEMAX))
+    if_clamp = b_if(bs, c_over, set_clamp)
+    sh_rep, sp_rep = b_sound(bs, 0, "repair")
+    chain([(dec_gold, bs[dec_gold]), (add_hp, bs[add_hp]), (if_clamp, bs[if_clamp]),
+           (sh_rep, bs[sh_rep]), (sp_rep, bs[sp_rep])])
+    sh_err, sp_err = b_sound(bs, 0, "error")
+    repair_head = b_ifelse(bs, c_can, dec_gold, sh_err)
+    # 중첩 구간 판정 (mousex 세 번 비교)
+    mxc = gen(); bs[mxc] = mk("sensing_mousex")
+    c_c = cmp_op("operator_lt", mxc, 116)
+    if_c = b_ifelse(bs, c_c, if_ma, repair_head)
+    mxb = gen(); bs[mxb] = mk("sensing_mousex")
+    c_b = cmp_op("operator_lt", mxb, 0)
+    if_b = b_ifelse(bs, c_b, if_ca, if_c)
+    mxa = gen(); bs[mxa] = mk("sensing_mousex")
+    c_a = cmp_op("operator_lt", mxa, -116)
+    if_click = b_ifelse(bs, c_a, set_sel1, if_b)
     chain([(hc, bs[hc]), (if_click, bs[if_click])])
+
+    add_comment(bs, comments, hc,
+        "🖱️ 팔레트를 클릭한 가로 위치로 4구간을 나눠요.\n"
+        "왼쪽부터 화살탑·대포탑·마법탑을 고르고(선택포탑 1·2·3), 맨 오른쪽 '성수리'를 누르면 "
+        "골드 수리비용을 내고 성체력을 수리량만큼 회복해요(성최대체력에서 멈춤). 골드가 모자라거나 "
+        "이미 풀피면 에러음만 나요. 성수리는 선택포탑을 바꾸지 않아요!",
+        x=720, y=180, w=350, h=190)
 
     return bs, comments
 
@@ -1804,6 +1874,93 @@ def build_gameover_blocks():
     return bs, comments
 
 # ============================================================
+#  유령미리보기 (GHOST PREVIEW: 선택 포탑을 마우스 위에 반투명 표시 — 시각 전용)
+# ============================================================
+def build_ghost_blocks():
+    bs = {}
+    comments = {}
+    vrep, op, cmp_op, bool_op = make_helpers(bs)
+
+    # (A) 깃발 초기화 — 숨김 + 반투명(GHOST 55) + 포탑 크기(70)
+    h = gen(); bs[h] = mk("event_whenflagclicked", top=True, x=20, y=20)
+    hi = gen(); bs[hi] = mk("looks_hide")
+    rs = gen(); bs[rs] = mk("motion_setrotationstyle", fields={"STYLE": ["don't rotate", None]})
+    sz = gen(); bs[sz] = mk("looks_setsizeto", inputs={"SIZE": num(70)})
+    gh = gen(); bs[gh] = mk("looks_seteffectto", inputs={"VALUE": num(55)},
+        fields={"EFFECT": ["GHOST", None]})
+    chain([(h, bs[h]), (hi, bs[hi]), (rs, bs[rs]), (sz, bs[sz]), (gh, bs[gh])])
+
+    # (B) 게임시작 후 forever: 선택포탑>0 and 게임상태=1 이면 마우스 따라 + 선택 코스튬
+    hb = gen(); bs[hb] = mk("event_whenbroadcastreceived", top=True, x=20, y=220,
+        fields={"BROADCAST_OPTION": ["게임시작", BR_START]})
+    front = gen(); bs[front] = mk("looks_gotofrontback", fields={"FRONT_BACK": ["front", None]})
+    sel_r = vrep("선택포탑", V_SEL); c_sel = cmp_op("operator_gt", sel_r, 0)
+    st_r = vrep("게임상태", V_STATE); c_pl = cmp_op("operator_equals", st_r, 1)
+    c_on = bool_op("operator_and", c_sel, c_pl)
+    show = gen(); bs[show] = mk("looks_show")
+    mx = gen(); bs[mx] = mk("sensing_mousex"); my = gen(); bs[my] = mk("sensing_mousey")
+    g = gen(); bs[g] = mk("motion_gotoxy", inputs={"X": slot(mx), "Y": slot(my)})
+    bs[mx]["parent"] = g; bs[my]["parent"] = g
+    sel_cos = vrep("선택포탑", V_SEL)
+    sw = gen(); bs[sw] = mk("looks_switchcostumeto", inputs={"COSTUME": slot(sel_cos)})
+    bs[sel_cos]["parent"] = sw
+    chain([(show, bs[show]), (g, bs[g]), (sw, bs[sw])])
+    hi2 = gen(); bs[hi2] = mk("looks_hide")
+    if_on = b_ifelse(bs, c_on, show, hi2)
+    w = b_wait(bs, 0.02)
+    chain([(front, bs[front]), (if_on, bs[if_on]), (w, bs[w])])
+    fe = b_forever(bs, front)
+    chain([(hb, bs[hb]), (fe, bs[fe])])
+
+    add_comment(bs, comments, hb,
+        "👻 지금 고른 포탑을 마우스 위에 반투명(고스트 55)으로 미리 보여줘요.\n"
+        "선택포탑(1·2·3)에 맞는 코스튬으로 바꿔 마우스를 따라다녀요. 시각 전용이라 설치 판정에는 "
+        "쓰지 않아요 — 진짜 설치 가능 여부는 '건설커서'의 작은 십자선이 따로 검사해요(설치가 쉽도록).",
+        x=420, y=180, w=340, h=170)
+
+    return bs, comments
+
+# ============================================================
+#  선택표시 (SELECTION HIGHLIGHT: 고른 팔레트 버튼을 노란 테두리로 강조)
+# ============================================================
+def build_highlight_blocks():
+    bs = {}
+    comments = {}
+    vrep, op, cmp_op, bool_op = make_helpers(bs)
+
+    h = gen(); bs[h] = mk("event_whenflagclicked", top=True, x=20, y=20)
+    hi = gen(); bs[hi] = mk("looks_hide")
+    rs = gen(); bs[rs] = mk("motion_setrotationstyle", fields={"STYLE": ["don't rotate", None]})
+    sz = gen(); bs[sz] = mk("looks_setsizeto", inputs={"SIZE": num(100)})
+    chain([(h, bs[h]), (hi, bs[hi]), (rs, bs[rs]), (sz, bs[sz])])
+
+    hb = gen(); bs[hb] = mk("event_whenbroadcastreceived", top=True, x=20, y=220,
+        fields={"BROADCAST_OPTION": ["게임시작", BR_START]})
+    sel_r = vrep("선택포탑", V_SEL); c_sel = cmp_op("operator_gt", sel_r, 0)
+    # x = -174 + (선택포탑-1)*116  (버튼 중심: 1→-174, 2→-58, 3→58)
+    sub = op("operator_subtract", vrep("선택포탑", V_SEL), 1)
+    mul = op("operator_multiply", sub, 116)
+    xexpr = op("operator_add", -174, mul)
+    g = gen(); bs[g] = mk("motion_gotoxy", inputs={"X": slot(xexpr), "Y": num(-150)})
+    bs[xexpr]["parent"] = g
+    front = gen(); bs[front] = mk("looks_gotofrontback", fields={"FRONT_BACK": ["front", None]})
+    show = gen(); bs[show] = mk("looks_show")
+    chain([(g, bs[g]), (front, bs[front]), (show, bs[show])])
+    hi2 = gen(); bs[hi2] = mk("looks_hide")
+    if_on = b_ifelse(bs, c_sel, g, hi2)
+    w = b_wait(bs, 0.05)
+    chain([(if_on, bs[if_on]), (w, bs[w])])
+    fe = b_forever(bs, if_on)
+    chain([(hb, bs[hb]), (fe, bs[fe])])
+
+    add_comment(bs, comments, hb,
+        "✨ 지금 고른 포탑 버튼을 노란 테두리로 강조해요.\n"
+        "선택포탑(1·2·3)에 맞는 버튼 위치로 가서 보여주고, 아무것도 안 골랐으면(0) 숨어요.",
+        x=420, y=180, w=320, h=140)
+
+    return bs, comments
+
+# ============================================================
 #  ASSEMBLE
 # ============================================================
 def main():
@@ -1829,6 +1986,7 @@ def main():
     orb_md5    = save_svg(MAGICORB_SVG)
     cursor_md5 = save_svg(CURSOR_SVG)
     pal_md5    = [save_svg(s) for s in PALETTE_SVGS]
+    hl_md5     = save_svg(HIGHLIGHT_SVG)
     card_md5   = save_svg(CARD_SVG)
     rs_md5     = save_svg(RESULT_SVG)
     wd_md5     = [save_svg(s) for s in WHITE_DIGITS]
@@ -1850,6 +2008,7 @@ def main():
     build_s, build_n = save_wav(synth_build())
     error_s, error_n = save_wav(synth_error())
     upg_s, upg_n = save_wav(synth_upgrade())
+    repair_s, repair_n = save_wav(synth_repair())
 
     def snd(name, md5, n):
         return {"name": name, "assetId": md5, "dataFormat": "wav", "format": "",
@@ -1865,11 +2024,13 @@ def main():
     pop_blocks,    pop_cmt    = build_popup_blocks()
     card_blocks,   card_cmt   = build_card_blocks()
     go_blocks,     go_cmt     = build_gameover_blocks()
+    ghost_blocks,  ghost_cmt  = build_ghost_blocks()
+    hl_blocks,     hl_cmt     = build_highlight_blocks()
 
     stage = {
         "isStage": True, "name": "Stage",
         "variables": {
-            # 튜닝 38
+            # 튜닝 40
             V_GOLD0: ["기본골드", 150], V_COSTA: ["화살탑가격", 50], V_COSTC: ["대포탑가격", 100],
             V_COSTM: ["마법탑가격", 150], V_WAVEGOLD: ["웨이브클리어골드", 30], V_UPGOLD: ["강화골드량", 40],
             V_UP: ["강화량", 1], V_CASTLEMAX: ["성최대체력", 20], V_UNLKC: ["대포탑해금웨이브", 2],
@@ -1883,6 +2044,7 @@ def main():
             V_ARS: ["화살탑_폭발반경", 16], V_CAR: ["대포탑_사거리", 100], V_CAD: ["대포탑_공격력", 2],
             V_CAG: ["대포탑_간격", 1.3], V_CAS: ["대포탑_폭발반경", 60], V_MAR: ["마법탑_사거리", 150],
             V_MAD: ["마법탑_공격력", 4], V_MAG: ["마법탑_간격", 0.85], V_MAS: ["마법탑_폭발반경", 20],
+            V_REPAIRCOST: ["수리비용", 60], V_REPAIRAMT: ["수리량", 5],
             # 진행 40
             V_STATE: ["게임상태", 1], V_WAVE: ["웨이브", 1], V_GOLDCUR: ["골드", 150],
             V_CASTLE: ["성체력", 20], V_ALIVE: ["적수", 0], V_SPAWNED: ["스폰완료", 0],
@@ -2021,15 +2183,15 @@ def main():
         "currentCostume": 0,
         "costumes": [
             {"name": "둘다잠금", "bitmapResolution": 1, "dataFormat": "svg",
-             "assetId": pal_md5[0], "md5ext": f"{pal_md5[0]}.svg", "rotationCenterX": 180, "rotationCenterY": 35},
+             "assetId": pal_md5[0], "md5ext": f"{pal_md5[0]}.svg", "rotationCenterX": 236, "rotationCenterY": 35},
             {"name": "대포해금", "bitmapResolution": 1, "dataFormat": "svg",
-             "assetId": pal_md5[1], "md5ext": f"{pal_md5[1]}.svg", "rotationCenterX": 180, "rotationCenterY": 35},
+             "assetId": pal_md5[1], "md5ext": f"{pal_md5[1]}.svg", "rotationCenterX": 236, "rotationCenterY": 35},
             {"name": "마법해금", "bitmapResolution": 1, "dataFormat": "svg",
-             "assetId": pal_md5[2], "md5ext": f"{pal_md5[2]}.svg", "rotationCenterX": 180, "rotationCenterY": 35},
+             "assetId": pal_md5[2], "md5ext": f"{pal_md5[2]}.svg", "rotationCenterX": 236, "rotationCenterY": 35},
             {"name": "모두해금", "bitmapResolution": 1, "dataFormat": "svg",
-             "assetId": pal_md5[3], "md5ext": f"{pal_md5[3]}.svg", "rotationCenterX": 180, "rotationCenterY": 35},
+             "assetId": pal_md5[3], "md5ext": f"{pal_md5[3]}.svg", "rotationCenterX": 236, "rotationCenterY": 35},
         ],
-        "sounds": [],
+        "sounds": [snd("repair", repair_s, repair_n), snd("error", error_s, error_n)],
         "volume": 100, "layerOrder": 8, "visible": True,
         "x": 0, "y": -150, "size": 100, "direction": 90,
         "draggable": False, "rotationStyle": "don't rotate"
@@ -2081,6 +2243,40 @@ def main():
         "draggable": False, "rotationStyle": "don't rotate"
     }
 
+    # 유령미리보기: 포탑 코스튬 3개 재사용(화살탑/대포탑/마법탑 이미지) — 반투명 미리보기 전용
+    ghost = {
+        "isStage": False, "name": "유령미리보기",
+        "variables": {}, "lists": {}, "broadcasts": {},
+        "blocks": ghost_blocks, "comments": ghost_cmt,
+        "currentCostume": 0,
+        "costumes": [
+            {"name": "화살탑미리", "bitmapResolution": 1, "dataFormat": "svg",
+             "assetId": art_md5, "md5ext": f"{art_md5}.svg", "rotationCenterX": 30, "rotationCenterY": 42},
+            {"name": "대포탑미리", "bitmapResolution": 1, "dataFormat": "svg",
+             "assetId": cat_md5, "md5ext": f"{cat_md5}.svg", "rotationCenterX": 30, "rotationCenterY": 42},
+            {"name": "마법탑미리", "bitmapResolution": 1, "dataFormat": "svg",
+             "assetId": mat_md5, "md5ext": f"{mat_md5}.svg", "rotationCenterX": 30, "rotationCenterY": 42},
+        ],
+        "sounds": [],
+        "volume": 100, "layerOrder": 13, "visible": False,
+        "x": 0, "y": 0, "size": 70, "direction": 90,
+        "draggable": False, "rotationStyle": "don't rotate"
+    }
+
+    highlight = {
+        "isStage": False, "name": "선택표시",
+        "variables": {}, "lists": {}, "broadcasts": {},
+        "blocks": hl_blocks, "comments": hl_cmt,
+        "currentCostume": 0,
+        "costumes": [{"name": "강조", "bitmapResolution": 1, "dataFormat": "svg",
+            "assetId": hl_md5, "md5ext": f"{hl_md5}.svg",
+            "rotationCenterX": 60, "rotationCenterY": 32}],
+        "sounds": [],
+        "volume": 100, "layerOrder": 14, "visible": False,
+        "x": 0, "y": -150, "size": 100, "direction": 90,
+        "draggable": False, "rotationStyle": "don't rotate"
+    }
+
     # ---- 모니터: 웨이브 / 골드 / 성체력 (튜닝 변수는 숨김) ----
     monitors = [
         {"id": V_WAVE, "mode": "default", "opcode": "data_variable",
@@ -2098,7 +2294,8 @@ def main():
     ]
 
     project = {
-        "targets": [stage, castle, monster, tower, bolt, cursor, palette, popup, card, gameover],
+        "targets": [stage, castle, monster, tower, bolt, cursor, palette, popup, card,
+                    gameover, ghost, highlight],
         "monitors": monitors, "extensions": [],
         "meta": {"semver": "3.0.0", "vm": "13.7.4-svg", "agent": "castle-defense-builder"}
     }
@@ -2118,7 +2315,8 @@ def main():
     for nm, b in [("stage", stage_blocks), ("castle", castle_blocks),
                   ("monster", mon_blocks), ("tower", tw_blocks), ("bolt", bolt_blocks),
                   ("cursor", cur_blocks), ("palette", pal_blocks), ("popup", pop_blocks),
-                  ("card", card_blocks), ("gameover", go_blocks)]:
+                  ("card", card_blocks), ("gameover", go_blocks),
+                  ("ghost", ghost_blocks), ("highlight", hl_blocks)]:
         print(f"  {nm:9s}: {len(b)} blocks")
 
 if __name__ == "__main__":

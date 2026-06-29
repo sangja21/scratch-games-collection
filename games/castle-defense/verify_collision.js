@@ -133,6 +133,28 @@ function setMouseScratch(sx, sy, isDown) {
   check('클론 폭주 없음 (몬스터<80, 포탑탄<120)', clones('몬스터').length < 80 && clones('포탑탄').length < 120,
         `m${clones('몬스터').length} b${clones('포탑탄').length}`);
 
+  // ---- (D) 유령 미리보기는 시각 전용 — 설치 footprint 에 영향 없음 (민감도) ----
+  // 유령미리보기는 선택 포탑을 마우스 위에 반투명으로 보여주지만, 건설커서의 touching
+  // 검사 대상(성/포탑/길색)에 들어가지 않는다. 유령이 설치 지점 위에 떠 있어도 설치가
+  // 정상 동작해야 함 → 유령이 footprint 를 키우지 않음을 증명.
+  console.log('--- (D) 유령 미리보기 시각 전용 (설치 footprint 무관) ---');
+  setVar('성체력', 20); setVar('스폰완료', 1); setVar('적수', 5);
+  setVar('게임상태', 1); setVar('선택포탑', 1); setVar('골드', 200);
+  const ghost = orig('유령미리보기');
+  check('유령미리보기 스프라이트 존재', !!ghost);
+  ONPATH = false;
+  let gA = Number(sv().골드), tA = clones('포탑').length;
+  // 기존 포탑들과 안 겹치는 빈 잔디 지점 (앞 구간이 -150/70·-60/70·-120/-50·-100/-100 에 설치함)
+  setMouseScratch(120, 30, true);   // 유령 forever 가 이 지점으로 따라와 표시됨
+  await sleep(350);
+  const ghostOnSpot = ghost && ghost.visible === true && Math.hypot(ghost.x - 120, ghost.y - 30) < 6;
+  setMouseScratch(120, 30, false);
+  await sleep(80);
+  let gB = Number(sv().골드), tB = clones('포탑').length;
+  check('유령이 설치 지점에 떠 있음(시각 미리보기 동작)', ghostOnSpot, ghost ? `vis=${ghost.visible} (${ghost.x.toFixed(0)},${ghost.y.toFixed(0)})` : 'none');
+  check('유령이 떠 있어도 설치 정상: 골드 -50·포탑 +1 (footprint 영향 없음)', gB === gA - 50 && tB === tA + 1,
+        `골드 ${gA}→${gB}, 포탑 ${tA}→${tB}`);
+
   vm.quit && vm.quit();
   console.log('\n' + (FAIL ? 'COLLISION CHECK: SOME CHECKS FAILED' : 'COLLISION CHECK COMPLETE — area damage + color gate + kills verified.'));
   process.exit(FAIL ? 2 : 0);

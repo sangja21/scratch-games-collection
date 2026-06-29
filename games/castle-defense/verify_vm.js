@@ -57,10 +57,11 @@ function setMouseScratch(sx, sy, isDown) {
     화살탑_사거리:120, 화살탑_공격력:2, 화살탑_간격:0.45, 화살탑_폭발반경:16,
     대포탑_사거리:100, 대포탑_공격력:3, 대포탑_간격:1.3, 대포탑_폭발반경:60,
     마법탑_사거리:150, 마법탑_공격력:5, 마법탑_간격:0.85, 마법탑_폭발반경:20,
+    수리비용:60, 수리량:5,
   };
   let initOK = true, bad = [];
   for (const k in expect) if (Number(v[k]) !== Number(expect[k])) { initOK = false; bad.push(`${k}=${v[k]}`); }
-  check('튜닝 38개 기본값 초기화', initOK, bad.join(', ') || 'all OK');
+  check('튜닝 40개 기본값 초기화', initOK, bad.join(', ') || 'all OK');
   check('진행: 게임상태=1, 웨이브=1, 골드=기본골드(250), 성체력=성최대체력(20)',
         v.게임상태==1 && v.웨이브==1 && v.골드==250 && v.성체력==20,
         `state=${v.게임상태} wave=${v.웨이브} gold=${v.골드} castle=${v.성체력}`);
@@ -263,11 +264,73 @@ function setMouseScratch(sx, sy, isDown) {
   check('게임오버 후 포탑/포탑탄 클론 자기 삭제', clones('포탑').length === 0 && clones('포탑탄').length === 0,
         `t${clones('포탑').length} b${clones('포탑탄').length}`);
 
-  // ---- (12) sounds 11 (orphan 0) ----
-  console.log('--- (12) 합성 효과음 11종 ---');
+  // ---- (G) 유령 미리보기 (시각 전용: 존재·코스튬3·선택포탑별 코스튬 전환) ----
+  console.log('--- (G) 유령 미리보기 ---');
+  // 깨끗한 전투 상태 고정: 게임오버 감시(성체력<1)와 웨이브클리어 감시(스폰완료=1&적수<1)가
+  // 게임상태를 0/2 로 흔들지 않도록 성체력=max, 적수>0 로 둔다.
+  setVar('성체력', 20); setVar('스폰완료', 1); setVar('적수', 5); setVar('게임상태', 1);
+  const ghost = orig('유령미리보기');
+  check('유령미리보기 스프라이트 존재', !!ghost);
+  check('유령 코스튬 3개', ghost && ghost.getCostumes().length === 3,
+        ghost ? ghost.getCostumes().map(c=>c.name).join(',') : 'none');
+  setVar('게임상태', 1); setVar('선택포탑', 2); setMouseScratch(0, 0, false);
+  await sleep(220);
+  check('선택포탑=2 → 유령 코스튬 2번(대포탑미리)', ghost && costumeName(ghost) === '대포탑미리', ghost && costumeName(ghost));
+  check('선택포탑>0 & 게임상태=1 → 유령 보임', ghost && ghost.visible === true, ghost && ghost.visible);
+  setVar('선택포탑', 3); await sleep(220);
+  check('선택포탑=3 → 유령 코스튬 3번(마법탑미리)', ghost && costumeName(ghost) === '마법탑미리', ghost && costumeName(ghost));
+  setVar('선택포탑', 1); await sleep(220);
+  check('선택포탑=1 → 유령 코스튬 1번(화살탑미리)', ghost && costumeName(ghost) === '화살탑미리', ghost && costumeName(ghost));
+  setVar('선택포탑', 0); await sleep(220);
+  check('선택포탑=0 → 유령 숨김(시각 전용, 설치판정 무관)', ghost && ghost.visible === false, ghost && ghost.visible);
+  // 선택표시(하이라이트)도 선택포탑에 따라 위치/표시
+  const hl = orig('선택표시');
+  check('선택표시 스프라이트 존재', !!hl);
+  setVar('선택포탑', 2); await sleep(160);
+  check('선택포탑=2 → 선택표시 보임 & 버튼2 위치(x≈-58)', hl && hl.visible === true && Math.abs(hl.x + 58) < 2, hl && `vis=${hl.visible} x=${hl.x}`);
+  setVar('선택포탑', 0); await sleep(160);
+  check('선택포탑=0 → 선택표시 숨김', hl && hl.visible === false, hl && hl.visible);
+
+  // ---- (R) 성수리 버튼 (팔레트 4구간 클릭: 마우스 x≥116) ----
+  console.log('--- (R) 성수리 (4번째 팔레트 버튼) ---');
+  // 웨이브클리어 보너스(스폰완료=1&적수<1)가 골드를 흔들지 않도록 적수>0 로 고정
+  setVar('스폰완료', 1); setVar('적수', 5);
+  setVar('게임상태', 1); setVar('성최대체력', 20); setVar('수리비용', 60); setVar('수리량', 5);
+  setMouseScratch(174, -150, false);   // 4구간 (x≥116)
+  // case 1: 골드 충분 + 성 안 풀피 → 수리
+  setVar('골드', 200); setVar('성체력', 10); setVar('선택포탑', 1);
+  vm.runtime.startHats('event_whenthisspriteclicked');
+  await sleep(220);
+  let r = stageVars();
+  check('성수리: 골드 -수리비용 (200→140)', Number(r.골드) === 140, `골드=${r.골드}`);
+  check('성수리: 성체력 +수리량 (10→15)', Number(r.성체력) === 15, `성체력=${r.성체력}`);
+  check('성수리는 선택포탑을 바꾸지 않음 (여전히 1)', Number(r.선택포탑) === 1, `선택포탑=${r.선택포탑}`);
+  // case 2: 상한 클램프 (성체력 18 + 5 = 23 → 20)
+  setVar('골드', 200); setVar('성체력', 18);
+  vm.runtime.startHats('event_whenthisspriteclicked');
+  await sleep(220);
+  r = stageVars();
+  check('성수리 상한 클램프: 성체력 18→20 (24 아님, 민감도)', Number(r.성체력) === 20, `성체력=${r.성체력}`);
+  check('클램프 시에도 골드는 차감됨 (200→140)', Number(r.골드) === 140, `골드=${r.골드}`);
+  // case 3: 이미 풀피 → 변화 없음
+  setVar('골드', 200); setVar('성체력', 20);
+  vm.runtime.startHats('event_whenthisspriteclicked');
+  await sleep(220);
+  r = stageVars();
+  check('이미 풀피면 수리 안 됨 (골드·성체력 불변)', Number(r.골드) === 200 && Number(r.성체력) === 20, `골드=${r.골드} 성체력=${r.성체력}`);
+  // case 4: 골드 부족 → 변화 없음
+  setVar('골드', 30); setVar('성체력', 10);
+  vm.runtime.startHats('event_whenthisspriteclicked');
+  await sleep(220);
+  r = stageVars();
+  check('골드 부족 시 수리 안 됨 (골드·성체력 불변, 민감도)', Number(r.골드) === 30 && Number(r.성체력) === 10, `골드=${r.골드} 성체력=${r.성체력}`);
+
+  // ---- (12) sounds 13 (orphan 0) ----
+  console.log('--- (12) 합성 효과음 13종 ---');
   const want = {
     포탑: ['arrow','cannon','magic'], 몬스터: ['hit','kill','coin'], 성: ['castlehit'],
     Stage: ['horn'], 건설커서: ['build','error'], 강화카드: ['upgrade'],
+    팔레트: ['repair','error'],
   };
   let sndOK = true, sdet = [];
   let totalSnd = 0;
@@ -277,8 +340,8 @@ function setMouseScratch(sx, sy, isDown) {
     totalSnd += names.length;
     for (const w of want[sp]) if (!names.includes(w)) { sndOK = false; sdet.push(`${sp}!${w}`); }
   }
-  check('스프라이트별 효과음 등록 (포탑3·몬스터3·성1·Stage1·커서2·카드1)', sndOK, sdet.join(' ') || 'all present');
-  check('효과음 총 11개 (orphan 0)', totalSnd === 11, `total=${totalSnd}`);
+  check('스프라이트별 효과음 등록 (포탑3·몬스터3·성1·Stage1·커서2·카드1·팔레트2)', sndOK, sdet.join(' ') || 'all present');
+  check('효과음 총 13개 (orphan 0)', totalSnd === 13, `total=${totalSnd}`);
 
   vm.quit && vm.quit();
   console.log('\n' + (FAIL ? 'RUNTIME CHECK: SOME CHECKS FAILED' : 'RUNTIME CHECK COMPLETE — all checks passed, no exceptions.'));
