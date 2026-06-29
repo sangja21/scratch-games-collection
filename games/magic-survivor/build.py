@@ -786,7 +786,11 @@ def build_bolt_blocks():
     rem_r = vrep("남은관통", V_BOLTPIER)
     cond_rem_lt = cmp_op("operator_lt", rem_r, 1)
     del_in = gen(); bs[del_in] = mk("control_delete_this_clone")
-    if_rem = b_if(bs, cond_rem_lt, del_in)
+    # 적 클론의 피격 감지 루프(0.025s)가 겹침을 확실히 잡도록 삭제 직전 잠깐 머문다.
+    # (안 그러면 빠른 탄이 닿는 첫 프레임에 자기 삭제 → 적이 데미지 적용 전에 탄 소멸 = 터널링)
+    w_linger = b_wait(bs, 0.08)
+    chain([(w_linger, bs[w_linger]), (del_in, bs[del_in])])
+    if_rem = b_if(bs, cond_rem_lt, w_linger)
     chain([(dec_rem, bs[dec_rem]), (set_hcd, bs[set_hcd]), (if_rem, bs[if_rem])])
     if_hit = b_if(bs, cond_hit, dec_rem)
     # if 관통쿨>0 change -1
