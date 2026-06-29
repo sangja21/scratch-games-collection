@@ -805,11 +805,11 @@ def build_stage_blocks():
     add_set("화살탑_간격", V_ARG, 0.45)
     add_set("화살탑_폭발반경", V_ARS, 16)
     add_set("대포탑_사거리", V_CAR, 100)
-    add_set("대포탑_공격력", V_CAD, 2)
+    add_set("대포탑_공격력", V_CAD, 3)
     add_set("대포탑_간격", V_CAG, 1.3)
     add_set("대포탑_폭발반경", V_CAS, 60)
     add_set("마법탑_사거리", V_MAR, 150)
-    add_set("마법탑_공격력", V_MAD, 4)
+    add_set("마법탑_공격력", V_MAD, 5)
     add_set("마법탑_간격", V_MAG, 0.85)
     add_set("마법탑_폭발반경", V_MAS, 20)
 
