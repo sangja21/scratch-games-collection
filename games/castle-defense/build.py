@@ -14,7 +14,7 @@
     클론 스포너 + 복제됨 가드 / 폭발 연출 / 전용 합성 효과음(_wav_bytes·synth_*) /
     add_comment 가이드 투어.
 
-★ 모든 조절 값(40개)을 한글 전역 변수로만 노출, 코드 어디서도 매직넘버를 쓰지
+★ 모든 조절 값(42개)을 한글 전역 변수로만 노출, 코드 어디서도 매직넘버를 쓰지
   않는다(연출용 repeat 5 / 도달반경 비교 같은 소수 인라인만 허용). 초기화는 전부
   Stage 깃발 클릭 한 스크립트에 모은다. 길은 경로X/경로Y 리스트 6점.
 """
@@ -170,6 +170,21 @@ def synth_repair(rate=SND_RATE):
         env = math.exp(-((t % 0.09)) * 10)
         s = (math.sin(2 * math.pi * f * t) + 0.4 * math.sin(2 * math.pi * f * 1.5 * t)) / 1.4
         out.append(s * env * 0.45)
+    return out
+
+def synth_thunder(rate=SND_RATE):
+    """전체 번개 주문 — 저음 우르릉 (헤비 로우패스 노이즈 + 45Hz 럼블, 0.5초). 결정적."""
+    N = int(rate * 0.50); out = []
+    rng = random.Random(20240809)
+    lp = 0.0
+    for i in range(N):
+        t = i / rate
+        env = min(1.0, t / 0.03) * math.exp(-t * 4.5)          # 빠른 어택, 느린 우르릉 감쇠
+        white = rng.random() * 2 - 1
+        lp = lp + 0.14 * (white - lp)                          # 묵직한 로우패스
+        rumble = math.sin(2 * math.pi * (45 + 22 * math.exp(-t * 3)) * t)
+        s = (lp * 0.85 + rumble * 0.6) * env
+        out.append(max(-1, min(1, s)))
     return out
 
 # ============================================================
@@ -406,6 +421,27 @@ RESULT_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="360" height="160"
   <text x="180" y="136" text-anchor="middle" fill="#FFCDD2" font-family="Arial" font-size="14">초록 깃발(▶) 다시 도전</text>
 </svg>"""
 
+# -------- 번개효과: 화면 전체를 덮는 흰 번쩍 플래시(0.1초) --------
+FLASH_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="480" height="360" viewBox="0 0 480 360">
+  <rect width="480" height="360" fill="#FFFFFF"/>
+</svg>"""
+
+# -------- 주문버튼(HUD): ⚡ 전체 번개 — 준비됨/충전중 2코스튬(시후가 한눈에) --------
+def _spell_icon_svg(ready):
+    bg     = "#1565C0" if ready else "#37474F"
+    ring   = "#FFF176" if ready else "#607D8B"
+    bolt   = "#FFEB3B" if ready else "#90A4AE"
+    bstrk  = "#F9A825" if ready else "#546E7A"
+    label  = "준비!" if ready else "충전중"
+    lblfil = "#FFFFFF" if ready else "#B0BEC5"
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="70" height="84" viewBox="0 0 70 84">
+  <circle cx="35" cy="33" r="30" fill="{bg}" stroke="{ring}" stroke-width="4"/>
+  <polygon points="42,12 23,40 34,40 28,58 51,28 39,28" fill="{bolt}" stroke="{bstrk}" stroke-width="2" stroke-linejoin="round"/>
+  <text x="35" y="79" text-anchor="middle" font-family="Arial" font-size="15" font-weight="bold" fill="{lblfil}">{label}</text>
+</svg>"""
+SPELL_READY_SVG   = _spell_icon_svg(True)
+SPELL_CHARGE_SVG  = _spell_icon_svg(False)
+
 # -------- 숫자 코스튬: 흰 0~9(데미지) + 금 0~9(골드) — say 미사용 --------
 def _digit_svg(d, fill, stroke):
     return f"""<svg xmlns="http://www.w3.org/2000/svg" width="32" height="44" viewBox="0 0 32 44">
@@ -494,6 +530,8 @@ V_MAG       = "varMaG37"         # 마법탑_간격 0.85
 V_MAS       = "varMaS38"         # 마법탑_폭발반경 20
 V_REPAIRCOST= "varRepairCost39"  # 수리비용 60   (튜닝 39)
 V_REPAIRAMT = "varRepairAmt40"   # 수리량 5      (튜닝 40)
+V_SPELLDMG  = "varSpellDmg41"    # 주문공격력 5  (튜닝 41 — 전체 번개 데미지)
+V_SPELLCD   = "varSpellCD42"     # 주문쿨 6      (튜닝 42 — 재사용 대기 초)
 
 # ----- 5.2 진행/내부 상태 40 -----
 V_STATE   = "varState39"      # 게임상태 1
@@ -536,6 +574,7 @@ V_DMGDIG  = "varDmgDigit75"   # 데미지숫자 0
 V_DMGOFF  = "varDmgOff76"     # 데미지오프셋 0
 V_DMGLEN  = "varDmgLen77"     # 데미지글자수 0
 V_DMGPOS  = "varDmgPos78"     # 데미지자리 0
+V_SPELLLEFT = "varSpellLeft79" # 주문쿨남음 0  (진행 41 — >0 동안 재시전 불가, 틱 감소)
 
 # ----- 5.3 리스트 -----
 L_PATHX = "listPathX"   # 경로X
@@ -575,6 +614,7 @@ BR_PLACE  = "brPlace08"   # 포탑설치
 BR_UP     = "brUp09"      # 강화등장
 BR_UPDONE = "brUpDone10"  # 강화완료
 BR_CASTLE = "brCastle11"  # 성피격
+BR_SPELL  = "brSpell12"   # 주문시전 (전체 번개)
 
 # ============================================================
 #  block-builder helpers
@@ -805,7 +845,7 @@ def build_stage_blocks():
         sid = b_setvar(bs, name, vid, val)
         seq.append((sid, bs[sid]))
 
-    # ── 튜닝 38 (개조 손잡이) ──
+    # ── 튜닝 42 (개조 손잡이) ──
     add_set("기본골드", V_GOLD0, 250)
     add_set("화살탑가격", V_COSTA, 50)
     add_set("대포탑가격", V_COSTC, 100)
@@ -846,8 +886,10 @@ def build_stage_blocks():
     add_set("마법탑_폭발반경", V_MAS, 20)
     add_set("수리비용", V_REPAIRCOST, 60)
     add_set("수리량", V_REPAIRAMT, 5)
+    add_set("주문공격력", V_SPELLDMG, 5)
+    add_set("주문쿨", V_SPELLCD, 6)
 
-    # ── 진행 상태 40 (골드=기본골드, 성체력=성최대체력 참조) ──
+    # ── 진행 상태 41 (골드=기본골드, 성체력=성최대체력 참조) ──
     add_set("게임상태", V_STATE, 1)
     add_set("웨이브", V_WAVE, 1)
     gold0_r = vrep("기본골드", V_GOLD0)
@@ -890,6 +932,7 @@ def build_stage_blocks():
     add_set("데미지오프셋", V_DMGOFF, 0)
     add_set("데미지글자수", V_DMGLEN, 0)
     add_set("데미지자리", V_DMGPOS, 0)
+    add_set("주문쿨남음", V_SPELLLEFT, 0)
 
     # ── 경로(웨이포인트) 리스트 6점 ──
     delx = b_delete_all(bs, "경로X", L_PATHX); seq.append((delx, bs[delx]))
@@ -1219,6 +1262,32 @@ def build_monster_blocks():
     if_pick = b_if(bs, c_pick, set_aimd)
     if_active2 = b_if(bs, c_active2, if_pick)
     chain([(ha, bs[ha]), (if_active2, bs[if_active2])])
+
+    # (F) 주문시전(전체 번개) 받으면 — 화면의 모든 몬스터가 동시에 주문공격력만큼 피해.
+    #     wait/yield 없는 원자 실행이라 모든 클론이 경쟁 없이 한 번에 맞아요. 처치는 (C) 루프가 처리.
+    hsp = gen(); bs[hsp] = mk("event_whenbroadcastreceived", top=True, x=400, y=840,
+        fields={"BROADCAST_OPTION": ["주문시전", BR_SPELL]})
+    isc_s = vrep("복제됨", V_MON_ISC); c_clone3 = cmp_op("operator_equals", isc_s, 1)
+    st_s = vrep("게임상태", V_STATE); c_pl3 = cmp_op("operator_equals", st_s, 1)
+    c_active3 = bool_op("operator_and", c_clone3, c_pl3)
+    neg_sd = op("operator_subtract", 0, vrep("주문공격력", V_SPELLDMG))
+    dec_sp_hp = b_changevar(bs, "내체력", V_MON_HP, neg_sd)
+    # 데미지 숫자 팝업 재사용(폭심=몬스터 위치, 흰색 데미지)
+    set_sdval = b_setvar(bs, "데미지표시값", V_DMGVAL, vrep("주문공격력", V_SPELLDMG))
+    set_sdx = b_setvar(bs, "데미지표시x", V_DMGX, b_xpos(bs))
+    set_sdy = b_setvar(bs, "데미지표시y", V_DMGY, b_ypos(bs))
+    set_skind = b_setvar(bs, "팝업종류", V_DMGKIND, 0)
+    bc_sdmg = b_broadcast(bs, "데미지표시", BR_DMG)
+    chain([(dec_sp_hp, bs[dec_sp_hp]), (set_sdval, bs[set_sdval]), (set_sdx, bs[set_sdx]),
+           (set_sdy, bs[set_sdy]), (set_skind, bs[set_skind]), (bc_sdmg, bs[bc_sdmg])])
+    if_spell = b_if(bs, c_active3, dec_sp_hp)
+    chain([(hsp, bs[hsp]), (if_spell, bs[if_spell])])
+
+    add_comment(bs, comments, if_spell,
+        "⚡ 전체 번개가 치면(주문시전) 화면의 모든 몬스터가 동시에 주문공격력만큼 체력이 깎여요!\n"
+        "사거리·반경 제한이 없어서 길 위 모든 적이 한꺼번에 맞아요. 체력이 0 이하가 된 적은 "
+        "원래 처치 루프가 골드·폭발로 정리해요. 주문공격력 숫자를 바꾸면 번개 위력이 달라져요.",
+        x=720, y=800, w=340, h=180)
 
     add_comment(bs, comments, if_march,
         "🚶 다음 길목(현재점)을 향해 가요.\n"
@@ -1961,6 +2030,106 @@ def build_highlight_blocks():
     return bs, comments
 
 # ============================================================
+#  번개효과 (LIGHTNING FLASH: 주문시전 받으면 전체 흰 번쩍, 0.1초)
+# ============================================================
+def build_flash_blocks():
+    bs = {}
+    comments = {}
+    vrep, op, cmp_op, bool_op = make_helpers(bs)
+
+    h = gen(); bs[h] = mk("event_whenflagclicked", top=True, x=20, y=20)
+    hi = gen(); bs[hi] = mk("looks_hide")
+    g = gen(); bs[g] = mk("motion_gotoxy", inputs={"X": num(0), "Y": num(0)})
+    sz = gen(); bs[sz] = mk("looks_setsizeto", inputs={"SIZE": num(100)})
+    rs = gen(); bs[rs] = mk("motion_setrotationstyle", fields={"STYLE": ["don't rotate", None]})
+    chain([(h, bs[h]), (hi, bs[hi]), (g, bs[g]), (sz, bs[sz]), (rs, bs[rs])])
+
+    hb = gen(); bs[hb] = mk("event_whenbroadcastreceived", top=True, x=20, y=200,
+        fields={"BROADCAST_OPTION": ["주문시전", BR_SPELL]})
+    front = gen(); bs[front] = mk("looks_gotofrontback", fields={"FRONT_BACK": ["front", None]})
+    gh = gen(); bs[gh] = mk("looks_seteffectto", inputs={"VALUE": num(25)},
+        fields={"EFFECT": ["GHOST", None]})
+    show = gen(); bs[show] = mk("looks_show")
+    w = b_wait(bs, 0.1)
+    hi2 = gen(); bs[hi2] = mk("looks_hide")
+    chain([(hb, bs[hb]), (front, bs[front]), (gh, bs[gh]), (show, bs[show]),
+           (w, bs[w]), (hi2, bs[hi2])])
+
+    add_comment(bs, comments, hb,
+        "⚡ 번개가 칠 때 화면을 흰색으로 짧게(0.1초) 번쩍! 시각 연출 전용이에요.",
+        x=420, y=180, w=300, h=120)
+    return bs, comments
+
+# ============================================================
+#  주문버튼 (SPELL HUD: ⚡ 전체 번개 시전 + 준비/충전 표시)
+# ============================================================
+def build_spellbutton_blocks():
+    bs = {}
+    comments = {}
+    vrep, op, cmp_op, bool_op = make_helpers(bs)
+
+    def b_not(c):
+        nb = gen(); bs[nb] = mk("operator_not", inputs={"OPERAND": [2, c]})
+        bs[c]["parent"] = nb
+        return nb
+
+    def cast_chain():
+        # if (주문쿨남음<=0) and (게임상태=1) → 주문쿨남음=주문쿨 ; 우르릉 ; 주문시전 방송
+        left_pos = cmp_op("operator_gt", vrep("주문쿨남음", V_SPELLLEFT), 0)
+        not_cd = b_not(left_pos)                                  # 주문쿨남음<=0 (부동소수 등호 금지)
+        st = cmp_op("operator_equals", vrep("게임상태", V_STATE), 1)
+        cond = bool_op("operator_and", not_cd, st)
+        set_left = b_setvar(bs, "주문쿨남음", V_SPELLLEFT, vrep("주문쿨", V_SPELLCD))
+        sh, sp = b_sound(bs, 0, "thunder")
+        bc = b_broadcast(bs, "주문시전", BR_SPELL)
+        chain([(set_left, bs[set_left]), (sh, bs[sh]), (sp, bs[sp]), (bc, bs[bc])])
+        return b_if(bs, cond, set_left)
+
+    # (A) 깃발: 위치·크기·코스튬 + forever(재충전 + 준비/충전 코스튬)
+    h = gen(); bs[h] = mk("event_whenflagclicked", top=True, x=20, y=20)
+    rs = gen(); bs[rs] = mk("motion_setrotationstyle", fields={"STYLE": ["don't rotate", None]})
+    g = gen(); bs[g] = mk("motion_gotoxy", inputs={"X": num(40), "Y": num(150)})
+    sz = gen(); bs[sz] = mk("looks_setsizeto", inputs={"SIZE": num(70)})
+    front = gen(); bs[front] = mk("looks_gotofrontback", fields={"FRONT_BACK": ["front", None]})
+    show = gen(); bs[show] = mk("looks_show")
+    sw_ready0 = b_costume(bs, "준비됨")
+    # forever: 재충전(주문쿨남음>0 → -0.1) + 코스튬(>0=충전중 / else 준비됨)
+    left_pos2 = cmp_op("operator_gt", vrep("주문쿨남음", V_SPELLLEFT), 0)
+    dec_left = b_changevar(bs, "주문쿨남음", V_SPELLLEFT, -0.1)
+    if_rech = b_if(bs, left_pos2, dec_left)
+    left_pos3 = cmp_op("operator_gt", vrep("주문쿨남음", V_SPELLLEFT), 0)
+    sw_charge = b_costume(bs, "충전중")
+    sw_ready = b_costume(bs, "준비됨")
+    if_cos = b_ifelse(bs, left_pos3, sw_charge, sw_ready)
+    w = b_wait(bs, 0.1)
+    chain([(if_rech, bs[if_rech]), (if_cos, bs[if_cos]), (w, bs[w])])
+    fe = b_forever(bs, if_rech)
+    chain([(h, bs[h]), (rs, bs[rs]), (g, bs[g]), (sz, bs[sz]), (front, bs[front]),
+           (show, bs[show]), (sw_ready0, bs[sw_ready0]), (fe, bs[fe])])
+
+    # (B) 스페이스 키 → 시전
+    hk = gen(); bs[hk] = mk("event_whenkeypressed", top=True, x=360, y=20,
+        fields={"KEY_OPTION": ["space", None]})
+    cast_k = cast_chain()
+    chain([(hk, bs[hk]), (cast_k, bs[cast_k])])
+
+    # (C) HUD 버튼 클릭 → 시전 (같은 가드)
+    hc = gen(); bs[hc] = mk("event_whenthisspriteclicked", top=True, x=360, y=220)
+    cast_c = cast_chain()
+    chain([(hc, bs[hc]), (cast_c, bs[cast_c])])
+
+    add_comment(bs, comments, hk,
+        "⚡ 스페이스 키(또는 이 번개 버튼 클릭)로 전체 번개 주문을 써요!\n"
+        "주문쿨남음이 0 이하이고 전투중(게임상태=1)일 때만 발동해요. 쓰면 주문쿨남음=주문쿨 로 "
+        "채워져 재충전 동안엔 다시 못 써요(연타 가드). 우르릉 소리와 함께 화면이 번쩍!",
+        x=720, y=20, w=350, h=180)
+    add_comment(bs, comments, fe,
+        "🔋 재충전: 주문쿨남음이 0보다 크면 매 0.1초마다 0.1씩 줄어요. 0 이하가 되면 '준비됨' "
+        "코스튬으로 바뀌어 다시 쓸 수 있어요(부동소수 등호 대신 >0 / <=0 부등호 사용).",
+        x=-360, y=320, w=330, h=150)
+    return bs, comments
+
+# ============================================================
 #  ASSEMBLE
 # ============================================================
 def main():
@@ -1989,6 +2158,9 @@ def main():
     hl_md5     = save_svg(HIGHLIGHT_SVG)
     card_md5   = save_svg(CARD_SVG)
     rs_md5     = save_svg(RESULT_SVG)
+    flash_md5  = save_svg(FLASH_SVG)
+    spr_md5    = save_svg(SPELL_READY_SVG)
+    spc_md5    = save_svg(SPELL_CHARGE_SVG)
     wd_md5     = [save_svg(s) for s in WHITE_DIGITS]
     gd_md5     = [save_svg(s) for s in GOLD_DIGITS]
 
@@ -2009,6 +2181,7 @@ def main():
     error_s, error_n = save_wav(synth_error())
     upg_s, upg_n = save_wav(synth_upgrade())
     repair_s, repair_n = save_wav(synth_repair())
+    thunder_s, thunder_n = save_wav(synth_thunder())
 
     def snd(name, md5, n):
         return {"name": name, "assetId": md5, "dataFormat": "wav", "format": "",
@@ -2026,11 +2199,13 @@ def main():
     go_blocks,     go_cmt     = build_gameover_blocks()
     ghost_blocks,  ghost_cmt  = build_ghost_blocks()
     hl_blocks,     hl_cmt     = build_highlight_blocks()
+    flash_blocks,  flash_cmt  = build_flash_blocks()
+    spell_blocks,  spell_cmt  = build_spellbutton_blocks()
 
     stage = {
         "isStage": True, "name": "Stage",
         "variables": {
-            # 튜닝 40
+            # 튜닝 42
             V_GOLD0: ["기본골드", 150], V_COSTA: ["화살탑가격", 50], V_COSTC: ["대포탑가격", 100],
             V_COSTM: ["마법탑가격", 150], V_WAVEGOLD: ["웨이브클리어골드", 30], V_UPGOLD: ["강화골드량", 40],
             V_UP: ["강화량", 1], V_CASTLEMAX: ["성최대체력", 20], V_UNLKC: ["대포탑해금웨이브", 2],
@@ -2045,7 +2220,8 @@ def main():
             V_CAG: ["대포탑_간격", 1.3], V_CAS: ["대포탑_폭발반경", 60], V_MAR: ["마법탑_사거리", 150],
             V_MAD: ["마법탑_공격력", 4], V_MAG: ["마법탑_간격", 0.85], V_MAS: ["마법탑_폭발반경", 20],
             V_REPAIRCOST: ["수리비용", 60], V_REPAIRAMT: ["수리량", 5],
-            # 진행 40
+            V_SPELLDMG: ["주문공격력", 5], V_SPELLCD: ["주문쿨", 6],
+            # 진행 41
             V_STATE: ["게임상태", 1], V_WAVE: ["웨이브", 1], V_GOLDCUR: ["골드", 150],
             V_CASTLE: ["성체력", 20], V_ALIVE: ["적수", 0], V_SPAWNED: ["스폰완료", 0],
             V_SPAWNN: ["스폰카운트", 0], V_SEL: ["선택포탑", 0], V_UNCA: ["대포탑해금", 0],
@@ -2059,7 +2235,7 @@ def main():
             V_BOOMR: ["폭발반경", 0], V_SPAWNT: ["생성타입", 1], V_DMGVAL: ["데미지표시값", 0],
             V_DMGX: ["데미지표시x", 0], V_DMGY: ["데미지표시y", 0], V_DMGKIND: ["팝업종류", 0],
             V_DMGDIG: ["데미지숫자", 0], V_DMGOFF: ["데미지오프셋", 0], V_DMGLEN: ["데미지글자수", 0],
-            V_DMGPOS: ["데미지자리", 0],
+            V_DMGPOS: ["데미지자리", 0], V_SPELLLEFT: ["주문쿨남음", 0],
         },
         "lists": {
             L_PATHX: ["경로X", []],
@@ -2069,6 +2245,7 @@ def main():
             BR_START: "게임시작", BR_WAVE: "웨이브시작", BR_SPAWN: "몬스터생성", BR_AIM: "조준요청",
             BR_FIRE: "포탑발사", BR_HIT: "타격", BR_DMG: "데미지표시", BR_PLACE: "포탑설치",
             BR_UP: "강화등장", BR_UPDONE: "강화완료", BR_CASTLE: "성피격",
+            BR_SPELL: "주문시전",
         },
         "blocks": stage_blocks, "comments": stage_cmt,
         "currentCostume": 0,
@@ -2277,6 +2454,37 @@ def main():
         "draggable": False, "rotationStyle": "don't rotate"
     }
 
+    flash = {
+        "isStage": False, "name": "번개효과",
+        "variables": {}, "lists": {}, "broadcasts": {},
+        "blocks": flash_blocks, "comments": flash_cmt,
+        "currentCostume": 0,
+        "costumes": [{"name": "번쩍", "bitmapResolution": 1, "dataFormat": "svg",
+            "assetId": flash_md5, "md5ext": f"{flash_md5}.svg",
+            "rotationCenterX": 240, "rotationCenterY": 180}],
+        "sounds": [],
+        "volume": 100, "layerOrder": 15, "visible": False,
+        "x": 0, "y": 0, "size": 100, "direction": 90,
+        "draggable": False, "rotationStyle": "don't rotate"
+    }
+
+    spellbtn = {
+        "isStage": False, "name": "주문버튼",
+        "variables": {}, "lists": {}, "broadcasts": {},
+        "blocks": spell_blocks, "comments": spell_cmt,
+        "currentCostume": 0,
+        "costumes": [
+            {"name": "준비됨", "bitmapResolution": 1, "dataFormat": "svg",
+             "assetId": spr_md5, "md5ext": f"{spr_md5}.svg", "rotationCenterX": 35, "rotationCenterY": 42},
+            {"name": "충전중", "bitmapResolution": 1, "dataFormat": "svg",
+             "assetId": spc_md5, "md5ext": f"{spc_md5}.svg", "rotationCenterX": 35, "rotationCenterY": 42},
+        ],
+        "sounds": [snd("thunder", thunder_s, thunder_n)],
+        "volume": 100, "layerOrder": 16, "visible": True,
+        "x": 40, "y": 150, "size": 70, "direction": 90,
+        "draggable": False, "rotationStyle": "don't rotate"
+    }
+
     # ---- 모니터: 웨이브 / 골드 / 성체력 (튜닝 변수는 숨김) ----
     monitors = [
         {"id": V_WAVE, "mode": "default", "opcode": "data_variable",
@@ -2295,7 +2503,7 @@ def main():
 
     project = {
         "targets": [stage, castle, monster, tower, bolt, cursor, palette, popup, card,
-                    gameover, ghost, highlight],
+                    gameover, ghost, highlight, flash, spellbtn],
         "monitors": monitors, "extensions": [],
         "meta": {"semver": "3.0.0", "vm": "13.7.4-svg", "agent": "castle-defense-builder"}
     }
@@ -2316,7 +2524,8 @@ def main():
                   ("monster", mon_blocks), ("tower", tw_blocks), ("bolt", bolt_blocks),
                   ("cursor", cur_blocks), ("palette", pal_blocks), ("popup", pop_blocks),
                   ("card", card_blocks), ("gameover", go_blocks),
-                  ("ghost", ghost_blocks), ("highlight", hl_blocks)]:
+                  ("ghost", ghost_blocks), ("highlight", hl_blocks),
+                  ("flash", flash_blocks), ("spellbtn", spell_blocks)]:
         print(f"  {nm:9s}: {len(b)} blocks")
 
 if __name__ == "__main__":

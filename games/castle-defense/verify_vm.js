@@ -1,10 +1,11 @@
 // Headless scratch-vm runtime check for castle-defense.
 // Renderer is stubbed → touching / touching-color return false; distance-to /
-// positions / state logic DO run. We verify: var init (78), waypoint lists,
+// positions / state logic DO run. We verify: var init (79), waypoint lists,
 // monster spawn ramp + path march, reaching castle → 성체력-1, tower placement
 // (gold deduct + clone stats), auto-aim handshake + fire, gold economy, wave
-// clear state machine 1→2→1, upgrades 1-4, unlock, wave scaling, game over,
-// bounded clones, and 11 synth sounds (orphan 0).
+// clear state machine 1→2→1, upgrades 1-4, unlock, wave scaling, ⚡ 전체 번개
+// 주문(스페이스/HUD 시전·전체 데미지·연타 가드·재충전), game over, bounded
+// clones, and 14 synth sounds (orphan 0).
 const fs = require('fs');
 const path = require('path');
 const VM = require('scratch-vm');
@@ -47,7 +48,7 @@ function setMouseScratch(sx, sy, isDown) {
 
   // ---- (1) tuning var init (38) + progress ----
   let v = stageVars();
-  console.log('--- (1) 튜닝 38 + 진행 초기화 ---');
+  console.log('--- (1) 튜닝 42 + 진행 초기화 ---');
   const expect = {
     기본골드:250, 화살탑가격:50, 대포탑가격:100, 마법탑가격:150, 웨이브클리어골드:40,
     강화골드량:40, 강화량:1, 성최대체력:20, 대포탑해금웨이브:2, 마법탑해금웨이브:4,
@@ -57,11 +58,12 @@ function setMouseScratch(sx, sy, isDown) {
     화살탑_사거리:120, 화살탑_공격력:2, 화살탑_간격:0.45, 화살탑_폭발반경:16,
     대포탑_사거리:100, 대포탑_공격력:3, 대포탑_간격:1.3, 대포탑_폭발반경:60,
     마법탑_사거리:150, 마법탑_공격력:5, 마법탑_간격:0.85, 마법탑_폭발반경:20,
-    수리비용:60, 수리량:5,
+    수리비용:60, 수리량:5, 주문공격력:5, 주문쿨:6,
   };
   let initOK = true, bad = [];
   for (const k in expect) if (Number(v[k]) !== Number(expect[k])) { initOK = false; bad.push(`${k}=${v[k]}`); }
-  check('튜닝 40개 기본값 초기화', initOK, bad.join(', ') || 'all OK');
+  check('튜닝 42개 기본값 초기화 (주문공격력5·주문쿨6 포함)', initOK, bad.join(', ') || 'all OK');
+  check('진행: 주문쿨남음=0 (전체 번개 준비됨)', Number(v.주문쿨남음) === 0, `주문쿨남음=${v.주문쿨남음}`);
   check('진행: 게임상태=1, 웨이브=1, 골드=기본골드(250), 성체력=성최대체력(20)',
         v.게임상태==1 && v.웨이브==1 && v.골드==250 && v.성체력==20,
         `state=${v.게임상태} wave=${v.웨이브} gold=${v.골드} castle=${v.성체력}`);
@@ -325,12 +327,69 @@ function setMouseScratch(sx, sy, isDown) {
   r = stageVars();
   check('골드 부족 시 수리 안 됨 (골드·성체력 불변, 민감도)', Number(r.골드) === 30 && Number(r.성체력) === 10, `골드=${r.골드} 성체력=${r.성체력}`);
 
-  // ---- (12) sounds 13 (orphan 0) ----
-  console.log('--- (12) 합성 효과음 13종 ---');
+  // ---- (S) ⚡ 전체 번개 주문 (스페이스 / HUD 버튼 시전) ----
+  console.log('--- (S) 전체 번개 주문 ⚡ ---');
+  // 깨끗한 전투 상태: 게임오버/클리어 감시가 게임상태를 흔들지 않게 성체력=max, 적수>0
+  setVar('성체력', 20); setVar('스폰완료', 1); setVar('적수', 5);
+  setVar('게임상태', 1); setVar('웨이브', 1);
+  setVar('주문공격력', 5); setVar('주문쿨', 6); setVar('주문쿨남음', 0);
+  // 화면에 몬스터 3마리 스폰
+  setVar('생성타입', 1);
+  for (let i = 0; i < 3; i++) { vm.runtime.startHats('event_whenbroadcastreceived', { BROADCAST_OPTION: '몬스터생성' }); await sleep(70); }
+  await sleep(200);
+  let smon = clones('몬스터').filter(c => vm.runtime.targets.includes(c));
+  // 클린 델타 측정용으로 체력을 높게(번개로 죽지 않게)
+  for (const c of smon) setCloneLocal(c, '내체력', 50);
+  check('번개 테스트용 몬스터 존재 (>=1)', smon.length >= 1, `mon=${smon.length}`);
+  // 스페이스 키 시전
+  vm.runtime.startHats('event_whenkeypressed', { KEY_OPTION: 'space' });
+  await sleep(250);
+  v = stageVars();
+  const allHit = smon.length >= 1 && smon.every(c => Number(cloneLocal(c, '내체력')) === 45);
+  check('스페이스 시전 → 화면 모든 몬스터 내체력 -= 주문공격력(5): 50→45', allHit,
+        smon.map(c => cloneLocal(c, '내체력')).join(' '));
+  check('시전 시 주문쿨남음 = 주문쿨(6, 재충전 시작)', Number(v.주문쿨남음) > 5 && Number(v.주문쿨남음) <= 6,
+        `주문쿨남음=${Number(v.주문쿨남음).toFixed(2)}`);
+  // 연타 가드: 쿨 중(주문쿨남음>0) 재시전 차단
+  vm.runtime.startHats('event_whenkeypressed', { KEY_OPTION: 'space' });
+  await sleep(200);
+  const guardOK = smon.every(c => Number(cloneLocal(c, '내체력')) === 45);
+  check('쿨 중(주문쿨남음>0) 재시전 차단 — 내체력 불변(연타 가드 민감도)', guardOK,
+        smon.map(c => cloneLocal(c, '내체력')).join(' '));
+  // 재충전: 시간 지나며 주문쿨남음 감소
+  const left1 = Number(stageVars().주문쿨남음);
+  await sleep(600);
+  const left2 = Number(stageVars().주문쿨남음);
+  check('시간이 지나며 주문쿨남음 감소(재충전)', left2 < left1, `${left1.toFixed(2)}→${left2.toFixed(2)}`);
+  // HUD 버튼 클릭 시전 (쿨 리셋 후) — 주문버튼 타깃만 클릭
+  setVar('주문쿨남음', 0);
+  const sbtn = orig('주문버튼');
+  check('주문버튼(HUD) 스프라이트 존재 + 코스튬 2(준비됨/충전중)', !!sbtn && sbtn.getCostumes().length === 2,
+        sbtn ? sbtn.getCostumes().map(c => c.name).join(',') : 'none');
+  const before3 = smon.map(c => Number(cloneLocal(c, '내체력')));
+  vm.runtime.startHats('event_whenthisspriteclicked', null, sbtn);
+  await sleep(220);
+  const clickOK = smon.every((c, i) => Number(cloneLocal(c, '내체력')) === before3[i] - 5);
+  check('HUD 버튼 클릭 시전 → 몬스터 내체력 -= 주문공격력(45→40)', clickOK,
+        smon.map(c => cloneLocal(c, '내체력')).join(' '));
+  check('버튼 클릭 시전 후 주문쿨남음=주문쿨(>5)', Number(stageVars().주문쿨남음) > 5,
+        `주문쿨남음=${Number(stageVars().주문쿨남음).toFixed(2)}`);
+  // 게임상태≠1 (강화/오버) 일 때 시전 차단
+  setVar('주문쿨남음', 0); setVar('게임상태', 2);
+  const before4 = smon.map(c => Number(cloneLocal(c, '내체력')));
+  vm.runtime.startHats('event_whenkeypressed', { KEY_OPTION: 'space' });
+  await sleep(200);
+  const stateBlock = smon.every((c, i) => Number(cloneLocal(c, '내체력')) === before4[i]);
+  check('게임상태≠1 일 때 시전 차단 (전투중만 발동)', stateBlock,
+        smon.map(c => cloneLocal(c, '내체력')).join(' '));
+  setVar('게임상태', 1);
+
+  // ---- (12) sounds 14 (orphan 0) ----
+  console.log('--- (12) 합성 효과음 14종 ---');
   const want = {
     포탑: ['arrow','cannon','magic'], 몬스터: ['hit','kill','coin'], 성: ['castlehit'],
     Stage: ['horn'], 건설커서: ['build','error'], 강화카드: ['upgrade'],
-    팔레트: ['repair','error'],
+    팔레트: ['repair','error'], 주문버튼: ['thunder'],
   };
   let sndOK = true, sdet = [];
   let totalSnd = 0;
@@ -340,8 +399,8 @@ function setMouseScratch(sx, sy, isDown) {
     totalSnd += names.length;
     for (const w of want[sp]) if (!names.includes(w)) { sndOK = false; sdet.push(`${sp}!${w}`); }
   }
-  check('스프라이트별 효과음 등록 (포탑3·몬스터3·성1·Stage1·커서2·카드1·팔레트2)', sndOK, sdet.join(' ') || 'all present');
-  check('효과음 총 13개 (orphan 0)', totalSnd === 13, `total=${totalSnd}`);
+  check('스프라이트별 효과음 등록 (포탑3·몬스터3·성1·Stage1·커서2·카드1·팔레트2·주문버튼1)', sndOK, sdet.join(' ') || 'all present');
+  check('효과음 총 14개 (orphan 0)', totalSnd === 14, `total=${totalSnd}`);
 
   vm.quit && vm.quit();
   console.log('\n' + (FAIL ? 'RUNTIME CHECK: SOME CHECKS FAILED' : 'RUNTIME CHECK COMPLETE — all checks passed, no exceptions.'));
