@@ -49,20 +49,20 @@ function setMouseScratch(sx, sy, isDown) {
   let v = stageVars();
   console.log('--- (1) 튜닝 38 + 진행 초기화 ---');
   const expect = {
-    기본골드:150, 화살탑가격:50, 대포탑가격:100, 마법탑가격:150, 웨이브클리어골드:30,
+    기본골드:250, 화살탑가격:50, 대포탑가격:100, 마법탑가격:150, 웨이브클리어골드:40,
     강화골드량:40, 강화량:1, 성최대체력:20, 대포탑해금웨이브:2, 마법탑해금웨이브:4,
     기본몬스터수:6, 웨이브당몬스터증가:2, 몬스터간격:0.8, 웨이브체력증가:2, 웨이브속도증가:0.1,
     도달반경:12, 탄속도:9, 고블린_체력:3, 고블린_속도:2.2, 고블린_골드:5,
     오크_체력:8, 오크_속도:1.5, 오크_골드:10, 트롤_체력:20, 트롤_속도:0.9, 트롤_골드:25,
-    화살탑_사거리:120, 화살탑_공격력:1, 화살탑_간격:0.45, 화살탑_폭발반경:16,
+    화살탑_사거리:120, 화살탑_공격력:2, 화살탑_간격:0.45, 화살탑_폭발반경:16,
     대포탑_사거리:100, 대포탑_공격력:2, 대포탑_간격:1.3, 대포탑_폭발반경:60,
     마법탑_사거리:150, 마법탑_공격력:4, 마법탑_간격:0.85, 마법탑_폭발반경:20,
   };
   let initOK = true, bad = [];
   for (const k in expect) if (Number(v[k]) !== Number(expect[k])) { initOK = false; bad.push(`${k}=${v[k]}`); }
   check('튜닝 38개 기본값 초기화', initOK, bad.join(', ') || 'all OK');
-  check('진행: 게임상태=1, 웨이브=1, 골드=기본골드(150), 성체력=성최대체력(20)',
-        v.게임상태==1 && v.웨이브==1 && v.골드==150 && v.성체력==20,
+  check('진행: 게임상태=1, 웨이브=1, 골드=기본골드(250), 성체력=성최대체력(20)',
+        v.게임상태==1 && v.웨이브==1 && v.골드==250 && v.성체력==20,
         `state=${v.게임상태} wave=${v.웨이브} gold=${v.골드} castle=${v.성체력}`);
   check('조준거리=99999, 연사보너스=1, 스폰완료=0',
         v.조준거리==99999 && v.연사보너스==1 && v.스폰완료==0);
@@ -132,9 +132,9 @@ function setMouseScratch(sx, sy, isDown) {
   check('설치 시 골드 -화살탑가격(50)', Number(v.골드) === goldBefore - 50, `골드 ${goldBefore}→${v.골드}`);
   check('포탑 클론 1기 생성', tw.length === twBefore + 1, `towers ${twBefore}→${tw.length}`);
   const newTw = tw[tw.length - 1];
-  check('포탑 내타입=1, 내사거리=120, 내공격력=1', newTw &&
+  check('포탑 내타입=1, 내사거리=120, 내공격력=2', newTw &&
         Number(cloneLocal(newTw,'내타입'))===1 && Number(cloneLocal(newTw,'내사거리'))===120 &&
-        Number(cloneLocal(newTw,'내공격력'))===1,
+        Number(cloneLocal(newTw,'내공격력'))===2,
         newTw ? `t${cloneLocal(newTw,'내타입')} r${cloneLocal(newTw,'내사거리')} d${cloneLocal(newTw,'내공격력')}` : 'none');
   check('포탑이 설치 좌표(~-180,70)에 위치', newTw && Math.abs(newTw.x+180)<2 && Math.abs(newTw.y-70)<2,
         newTw ? `(${newTw.x.toFixed(0)},${newTw.y.toFixed(0)})` : 'none');
@@ -193,7 +193,7 @@ function setMouseScratch(sx, sy, isDown) {
   await sleep(300);
   v = stageVars();
   check('스폰완료=1 & 적수<=0 → 게임상태=2 (강화선택중)', Number(v.게임상태) === 2, `state=${v.게임상태}`);
-  check('웨이브 클리어 보너스 골드 지급', Number(v.골드) >= goldBefore - 50 + 30 - 1, `골드=${v.골드}`);
+  check('웨이브 클리어 보너스 골드 지급', Number(v.골드) >= goldBefore - 50 + 40 - 1, `골드=${v.골드}`);
   const atkBefore = Number(stageVars().공격력보너스);
   const waveBefore = Number(stageVars().웨이브);
   vm.postIOData('keyboard', { key: '1', isDown: true });

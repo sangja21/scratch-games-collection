@@ -767,11 +767,11 @@ def build_stage_blocks():
         seq.append((sid, bs[sid]))
 
     # ── 튜닝 38 (개조 손잡이) ──
-    add_set("기본골드", V_GOLD0, 150)
+    add_set("기본골드", V_GOLD0, 250)
     add_set("화살탑가격", V_COSTA, 50)
     add_set("대포탑가격", V_COSTC, 100)
     add_set("마법탑가격", V_COSTM, 150)
-    add_set("웨이브클리어골드", V_WAVEGOLD, 30)
+    add_set("웨이브클리어골드", V_WAVEGOLD, 40)
     add_set("강화골드량", V_UPGOLD, 40)
     add_set("강화량", V_UP, 1)
     add_set("성최대체력", V_CASTLEMAX, 20)
@@ -794,7 +794,7 @@ def build_stage_blocks():
     add_set("트롤_속도", V_TROLLSP, 0.9)
     add_set("트롤_골드", V_TROLLGOLD, 25)
     add_set("화살탑_사거리", V_ARR, 120)
-    add_set("화살탑_공격력", V_ARD, 1)
+    add_set("화살탑_공격력", V_ARD, 2)
     add_set("화살탑_간격", V_ARG, 0.45)
     add_set("화살탑_폭발반경", V_ARS, 16)
     add_set("대포탑_사거리", V_CAR, 100)
