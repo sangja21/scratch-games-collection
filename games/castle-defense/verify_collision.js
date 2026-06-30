@@ -143,6 +143,9 @@ function setMouseScratch(sx, sy, isDown) {
   const ghost = orig('유령미리보기');
   check('유령미리보기 스프라이트 존재', !!ghost);
   ONPATH = false;
+  // 측정창 동안 남은 몬스터가 처치되며 골드(+5~25)가 끼어들지 않게, 기존 몬스터 체력을 크게 → 처치 0.
+  // (설치 footprint 검증이 목적이라 전투 노이즈만 제거; 설치 로직은 그대로.)
+  for (const c of clones('몬스터')) setCloneLocal(c, '내체력', 99999);
   let gA = Number(sv().골드), tA = clones('포탑').length;
   // 기존 포탑들과 안 겹치는 빈 잔디 지점 (앞 구간이 -150/70·-60/70·-120/-50·-100/-100 에 설치함)
   setMouseScratch(120, 30, true);   // 유령 forever 가 이 지점으로 따라와 표시됨

@@ -173,17 +173,21 @@ def synth_repair(rate=SND_RATE):
     return out
 
 def synth_thunder(rate=SND_RATE):
-    """전체 번개 주문 — 저음 우르릉 (헤비 로우패스 노이즈 + 45Hz 럼블, 0.5초). 결정적."""
-    N = int(rate * 0.50); out = []
+    """전체 번개 주문 — 날카로운 '쩍' 크랙 + 묵직한 저음 우르릉(서브베이스). 0.6초, 결정적."""
+    N = int(rate * 0.60); out = []
     rng = random.Random(20240809)
     lp = 0.0
     for i in range(N):
         t = i / rate
-        env = min(1.0, t / 0.03) * math.exp(-t * 4.5)          # 빠른 어택, 느린 우르릉 감쇠
+        # 초반 날카로운 '쩍' 크랙 — 밝은 노이즈가 아주 빠르게 감쇠
+        crack = (rng.random() * 2 - 1) * math.exp(-t * 26) * 0.8
+        # 본체 우르릉 엔벨로프 (빠른 어택, 느린 감쇠)
+        env = min(1.0, t / 0.02) * math.exp(-t * 3.0)
         white = rng.random() * 2 - 1
-        lp = lp + 0.14 * (white - lp)                          # 묵직한 로우패스
-        rumble = math.sin(2 * math.pi * (45 + 22 * math.exp(-t * 3)) * t)
-        s = (lp * 0.85 + rumble * 0.6) * env
+        lp = lp + 0.10 * (white - lp)                          # 더 낮은 컷오프(묵직)
+        rumble = math.sin(2 * math.pi * (40 + 20 * math.exp(-t * 2.5)) * t)
+        sub = math.sin(2 * math.pi * 30 * t) * 0.45            # 깊은 서브베이스
+        s = (lp * 0.9 + rumble * 0.6 + sub) * env + crack
         out.append(max(-1, min(1, s)))
     return out
 
@@ -421,10 +425,45 @@ RESULT_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="360" height="160"
   <text x="180" y="136" text-anchor="middle" fill="#FFCDD2" font-family="Arial" font-size="14">초록 깃발(▶) 다시 도전</text>
 </svg>"""
 
-# -------- 번개효과: 화면 전체를 덮는 흰 번쩍 플래시(0.1초) --------
+# -------- 번개효과: 화면 전체를 덮는 흰 번쩍 플래시 + 내리꽂는 지그재그 번개 줄기 --------
 FLASH_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="480" height="360" viewBox="0 0 480 360">
   <rect width="480" height="360" fill="#FFFFFF"/>
 </svg>"""
+
+def _lightning_svg(seed):
+    """위에서 내리꽂는 지그재그 번개 가닥 2~3개 (흰 코어 + 연노랑 글로우 + 곁가지) + 옅은 흰 플래시.
+       seed 별로 모양이 달라 빠르게 코스튬을 바꾸면 가닥이 번쩍이는 느낌. 결정적."""
+    rng = random.Random(seed)
+    parts = ['<rect width="480" height="360" fill="#FFFFFF" opacity="0.30"/>']
+    def bolt(x0):
+        pts = [(x0, 0.0)]
+        x, y = x0, 0.0
+        while y < 360:
+            y += rng.randint(34, 56)
+            x += rng.randint(-46, 46)
+            x = max(24, min(456, x))
+            pts.append((x, min(y, 360.0)))
+        d = " ".join(f"{px:.0f},{py:.0f}" for px, py in pts)
+        seg = (f'<polyline points="{d}" fill="none" stroke="#FFF59D" stroke-width="11" '
+               f'stroke-linejoin="round" stroke-linecap="round" opacity="0.5"/>'
+               f'<polyline points="{d}" fill="none" stroke="#FFFFFF" stroke-width="4.5" '
+               f'stroke-linejoin="round" stroke-linecap="round"/>')
+        if len(pts) > 3:                                   # 곁가지 한 가닥
+            bi = rng.randint(1, len(pts) - 2)
+            bx, by = pts[bi]
+            ex = max(24, min(456, bx + rng.randint(-80, 80)))
+            ey = by + rng.randint(30, 60)
+            seg += (f'<polyline points="{bx:.0f},{by:.0f} {ex:.0f},{ey:.0f}" fill="none" '
+                    f'stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" opacity="0.9"/>')
+        return seg
+    for _ in range(rng.randint(2, 3)):
+        parts.append(bolt(rng.randint(80, 400)))
+    inner = "\n  ".join(parts)
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="480" height="360" viewBox="0 0 480 360">
+  {inner}
+</svg>"""
+
+LIGHTNING_SVGS = [_lightning_svg(700 + i) for i in range(3)]
 
 # -------- 주문버튼(HUD): ⚡ 전체 번개 — 준비됨/충전중 2코스튬(시후가 한눈에) --------
 def _spell_icon_svg(ready):
@@ -1289,6 +1328,23 @@ def build_monster_blocks():
         "원래 처치 루프가 골드·폭발로 정리해요. 주문공격력 숫자를 바꾸면 번개 위력이 달라져요.",
         x=720, y=800, w=340, h=180)
 
+    # (F2) 주문시전 피격 번쩍 — 잠깐 흰색으로(밝기) 번쩍! (데미지 로직과 분리된 시각 전용 스크립트)
+    hfl = gen(); bs[hfl] = mk("event_whenbroadcastreceived", top=True, x=760, y=840,
+        fields={"BROADCAST_OPTION": ["주문시전", BR_SPELL]})
+    isc_fl = vrep("복제됨", V_MON_ISC); c_clone_fl = cmp_op("operator_equals", isc_fl, 1)
+    br_on = gen(); bs[br_on] = mk("looks_seteffectto", inputs={"VALUE": num(80)},
+        fields={"EFFECT": ["BRIGHTNESS", None]})
+    w_fl = b_wait(bs, 0.12)
+    br_off = gen(); bs[br_off] = mk("looks_seteffectto", inputs={"VALUE": num(0)},
+        fields={"EFFECT": ["BRIGHTNESS", None]})
+    chain([(br_on, bs[br_on]), (w_fl, bs[w_fl]), (br_off, bs[br_off])])
+    if_fl = b_if(bs, c_clone_fl, br_on)
+    chain([(hfl, bs[hfl]), (if_fl, bs[if_fl])])
+    add_comment(bs, comments, hfl,
+        "✨ 번개 맞은 표시: 주문시전을 받으면 0.12초 동안 밝기 효과로 흰색 번쩍! 데미지 숫자는 (F)가 "
+        "이미 띄우고, 여기선 피격을 눈에 보이게만 해요(밝기 0으로 되돌림). 데미지·쿨은 안 건드려요.",
+        x=1100, y=820, w=330, h=150)
+
     add_comment(bs, comments, if_march,
         "🚶 다음 길목(현재점)을 향해 가요.\n"
         "경로X·경로Y 의 현재점 번째 점으로 방향을 잡고 내속도만큼 이동해요. 도착하면(도달반경 안) "
@@ -1709,9 +1765,13 @@ def build_palette_blocks():
     fe = b_forever(bs, if_cos)
     chain([(hb, bs[hb]), (fe, bs[fe])])
 
-    # 클릭 → 4구간 판정 (버튼 경계 scratch x: -116 / 0 / 116)
+    # 클릭(마우스 누름 폴링) → 4구간 판정 (버튼 경계 scratch x: -116 / 0 / 116)
     #   x<-116 → 화살탑(1) ; <0 → 대포탑(2, 해금시) ; <116 → 마법탑(3, 해금시) ; 그밖 → 성수리(즉시)
-    hc = gen(); bs[hc] = mk("event_whenthisspriteclicked", top=True, x=380, y=220)
+    #  ※ when-this-sprite-clicked 대신 forever 폴링: 포탑을 하나 고르면 유령미리보기(맨 앞)가 마우스
+    #    위에 떠 다음 팔레트 버튼 클릭을 가로채던 버그가 있었음 → 마우스 누름을 직접 감지해 front 가림과
+    #    무관하게 항상 먹히게 함.
+    hc = gen(); bs[hc] = mk("event_whenbroadcastreceived", top=True, x=380, y=220,
+        fields={"BROADCAST_OPTION": ["게임시작", BR_START]})
     # 1구간: 선택포탑=1
     set_sel1 = b_setvar(bs, "선택포탑", V_SEL, 1)
     # 2구간: if 대포해금=1 → 선택포탑=2
@@ -1754,14 +1814,37 @@ def build_palette_blocks():
     mxa = gen(); bs[mxa] = mk("sensing_mousex")
     c_a = cmp_op("operator_lt", mxa, -116)
     if_click = b_ifelse(bs, c_a, set_sel1, if_b)
-    chain([(hc, bs[hc]), (if_click, bs[if_click])])
+
+    # 디바운스: 한 번 처리하면 마우스 뗄 때까지 대기 (1클릭=1동작)
+    md2 = gen(); bs[md2] = mk("sensing_mousedown")
+    notmd = gen(); bs[notmd] = mk("operator_not", inputs={"OPERAND": [2, md2]})
+    bs[md2]["parent"] = notmd
+    waitnot = gen(); bs[waitnot] = mk("control_wait_until", inputs={"CONDITION": [2, notmd]})
+    bs[notmd]["parent"] = waitnot
+    chain([(if_click, bs[if_click]), (waitnot, bs[waitnot])])   # 본문: 버튼판정 → 디바운스
+
+    # 폴링 게이트: (마우스 누름) and (게임상태=1) and (마우스 y < -116, 즉 화면 하단 팔레트 띠)
+    #   팔레트는 y=-150 중심·높이 70 → 스프라이트는 y[-185,-115]. y<-116 이면 팔레트 띠 클릭으로 간주.
+    md = gen(); bs[md] = mk("sensing_mousedown")
+    c_state = cmp_op("operator_equals", vrep("게임상태", V_STATE), 1)
+    my = gen(); bs[my] = mk("sensing_mousey")
+    c_band = cmp_op("operator_lt", my, -116)
+    g1 = bool_op("operator_and", md, c_state)
+    cond = bool_op("operator_and", g1, c_band)
+    if_poll = b_if(bs, cond, if_click)                 # 본문 머리 = if_click → waitnot
+    w = b_wait(bs, 0.01)
+    chain([(if_poll, bs[if_poll]), (w, bs[w])])
+    fe_poll = b_forever(bs, if_poll)
+    chain([(hc, bs[hc]), (fe_poll, bs[fe_poll])])
 
     add_comment(bs, comments, hc,
-        "🖱️ 팔레트를 클릭한 가로 위치로 4구간을 나눠요.\n"
-        "왼쪽부터 화살탑·대포탑·마법탑을 고르고(선택포탑 1·2·3), 맨 오른쪽 '성수리'를 누르면 "
-        "골드 수리비용을 내고 성체력을 수리량만큼 회복해요(성최대체력에서 멈춤). 골드가 모자라거나 "
-        "이미 풀피면 에러음만 나요. 성수리는 선택포탑을 바꾸지 않아요!",
-        x=720, y=180, w=350, h=190)
+        "🖱️ 팔레트 띠(화면 하단)를 마우스로 누른 가로 위치로 4구간을 나눠요.\n"
+        "유령미리보기/커서가 맨 앞에 떠 있어도 가려지지 않도록 'when 클릭' 대신 마우스 누름을 직접 "
+        "폴링해요(버그 수정). 왼쪽부터 화살탑·대포탑·마법탑을 고르고(선택포탑 1·2·3), 맨 오른쪽 "
+        "'성수리'를 누르면 골드 수리비용을 내고 성체력을 수리량만큼 회복해요(성최대체력에서 멈춤). "
+        "골드가 모자라거나 이미 풀피면 에러음만 나요. 성수리는 선택포탑을 바꾸지 않아요! "
+        "한 번 처리하면 마우스 뗄 때까지 대기해 1클릭=1동작이에요.",
+        x=720, y=180, w=360, h=210)
 
     return bs, comments
 
@@ -2047,17 +2130,48 @@ def build_flash_blocks():
     hb = gen(); bs[hb] = mk("event_whenbroadcastreceived", top=True, x=20, y=200,
         fields={"BROADCAST_OPTION": ["주문시전", BR_SPELL]})
     front = gen(); bs[front] = mk("looks_gotofrontback", fields={"FRONT_BACK": ["front", None]})
-    gh = gen(); bs[gh] = mk("looks_seteffectto", inputs={"VALUE": num(25)},
-        fields={"EFFECT": ["GHOST", None]})
+
+    def seteff(effect, val):
+        bid = gen(); bs[bid] = mk("looks_seteffectto", inputs={"VALUE": num(val)},
+            fields={"EFFECT": [effect, None]})
+        return bid
+
+    # (1차 플래시) 흰 화면 번쩍 — 쾅!
+    gh0 = seteff("GHOST", 0)
+    cos_f1 = b_costume(bs, "번쩍")
     show = gen(); bs[show] = mk("looks_show")
-    w = b_wait(bs, 0.1)
+    w1 = b_wait(bs, 0.04)
+    # (번개 줄기 1) 내리꽂는 지그재그
+    cos_b1 = b_costume(bs, "번개1")
+    w2 = b_wait(bs, 0.05)
+    # (2차 플래시) 짧게 한 번 더 점멸 (살짝 옅게)
+    gh1 = seteff("GHOST", 20)
+    cos_f2 = b_costume(bs, "번쩍")
+    w3 = b_wait(bs, 0.035)
+    # (번개 줄기 2·3) 다른 가닥으로 번쩍번쩍
+    gh2 = seteff("GHOST", 0)
+    cos_b2 = b_costume(bs, "번개2")
+    w4 = b_wait(bs, 0.05)
+    cos_b3 = b_costume(bs, "번개3")
+    w5 = b_wait(bs, 0.05)
+    # (페이드 아웃) ghost 를 키우며 스르륵 사라짐
+    inc = gen(); bs[inc] = mk("looks_changeeffectby", inputs={"CHANGE": num(25)},
+        fields={"EFFECT": ["GHOST", None]})
+    wf = b_wait(bs, 0.03)
+    chain([(inc, bs[inc]), (wf, bs[wf])])
+    rep = b_repeat(bs, 4, inc)
     hi2 = gen(); bs[hi2] = mk("looks_hide")
-    chain([(hb, bs[hb]), (front, bs[front]), (gh, bs[gh]), (show, bs[show]),
-           (w, bs[w]), (hi2, bs[hi2])])
+    chain([(hb, bs[hb]), (front, bs[front]), (gh0, bs[gh0]), (cos_f1, bs[cos_f1]),
+           (show, bs[show]), (w1, bs[w1]), (cos_b1, bs[cos_b1]), (w2, bs[w2]),
+           (gh1, bs[gh1]), (cos_f2, bs[cos_f2]), (w3, bs[w3]), (gh2, bs[gh2]),
+           (cos_b2, bs[cos_b2]), (w4, bs[w4]), (cos_b3, bs[cos_b3]), (w5, bs[w5]),
+           (rep, bs[rep]), (hi2, bs[hi2])])
 
     add_comment(bs, comments, hb,
-        "⚡ 번개가 칠 때 화면을 흰색으로 짧게(0.1초) 번쩍! 시각 연출 전용이에요.",
-        x=420, y=180, w=300, h=120)
+        "⚡ 번개가 칠 때(주문시전) '쾅!' — 흰 화면이 빠르게 두 번 점멸하고, 위에서 내리꽂는 지그재그 "
+        "번개 줄기(번개1·2·3 코스튬)가 번쩍번쩍 바뀌다가 ghost 로 스르륵 사라져요. 총 0.3초쯤, "
+        "시각 연출 전용이라 데미지·쿨은 안 건드려요(우르릉 소리는 주문버튼이 냅니다).",
+        x=420, y=180, w=340, h=170)
     return bs, comments
 
 # ============================================================
@@ -2159,6 +2273,7 @@ def main():
     card_md5   = save_svg(CARD_SVG)
     rs_md5     = save_svg(RESULT_SVG)
     flash_md5  = save_svg(FLASH_SVG)
+    light_md5  = [save_svg(s) for s in LIGHTNING_SVGS]
     spr_md5    = save_svg(SPELL_READY_SVG)
     spc_md5    = save_svg(SPELL_CHARGE_SVG)
     wd_md5     = [save_svg(s) for s in WHITE_DIGITS]
@@ -2459,9 +2574,20 @@ def main():
         "variables": {}, "lists": {}, "broadcasts": {},
         "blocks": flash_blocks, "comments": flash_cmt,
         "currentCostume": 0,
-        "costumes": [{"name": "번쩍", "bitmapResolution": 1, "dataFormat": "svg",
-            "assetId": flash_md5, "md5ext": f"{flash_md5}.svg",
-            "rotationCenterX": 240, "rotationCenterY": 180}],
+        "costumes": [
+            {"name": "번쩍", "bitmapResolution": 1, "dataFormat": "svg",
+             "assetId": flash_md5, "md5ext": f"{flash_md5}.svg",
+             "rotationCenterX": 240, "rotationCenterY": 180},
+            {"name": "번개1", "bitmapResolution": 1, "dataFormat": "svg",
+             "assetId": light_md5[0], "md5ext": f"{light_md5[0]}.svg",
+             "rotationCenterX": 240, "rotationCenterY": 180},
+            {"name": "번개2", "bitmapResolution": 1, "dataFormat": "svg",
+             "assetId": light_md5[1], "md5ext": f"{light_md5[1]}.svg",
+             "rotationCenterX": 240, "rotationCenterY": 180},
+            {"name": "번개3", "bitmapResolution": 1, "dataFormat": "svg",
+             "assetId": light_md5[2], "md5ext": f"{light_md5[2]}.svg",
+             "rotationCenterX": 240, "rotationCenterY": 180},
+        ],
         "sounds": [],
         "volume": 100, "layerOrder": 15, "visible": False,
         "x": 0, "y": 0, "size": 100, "direction": 90,

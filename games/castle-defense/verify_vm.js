@@ -222,7 +222,11 @@ function setMouseScratch(sx, sy, isDown) {
   const rofBefore = Number(stageVars().연사보너스);
   await clearAndPick('3');
   check('강화3: 연사보너스 ×0.85', Math.abs(Number(stageVars().연사보너스) - rofBefore * 0.85) < 1e-6, `연사보너스=${stageVars().연사보너스}`);
-  // 강화4(골드+): 클리어 보너스가 먼저 들어가므로 카드 등장 시점의 골드 기준으로 +강화골드량
+  // 강화4(골드+): 전투 노이즈(처치 골드) 제거 후 검증 — 안 그러면 검사 중 몬스터가 죽으며
+  // 처치 골드가 섞여 +강화골드량보다 더 들어와 플래키. 포탑 발사를 멈추고(발사쿨 크게)
+  // 남은 몬스터를 무적화해 처치 자체를 차단. (몬스터간격은 안 건드려야 이후 웨이브5 검사가 정상)
+  for (const c of clones('포탑')) setCloneLocal(c, '발사쿨', 99999);
+  for (const c of clones('몬스터')) setCloneLocal(c, '내체력', 99999);
   setVar('게임상태', 1); setVar('스폰완료', 1); setVar('적수', 0);
   await sleep(280);
   const goldAtCard = Number(stageVars().골드); // 웨이브클리어골드 반영 후
@@ -293,39 +297,59 @@ function setMouseScratch(sx, sy, isDown) {
   setVar('선택포탑', 0); await sleep(160);
   check('선택포탑=0 → 선택표시 숨김', hl && hl.visible === false, hl && hl.visible);
 
-  // ---- (R) 성수리 버튼 (팔레트 4구간 클릭: 마우스 x≥116) ----
-  console.log('--- (R) 성수리 (4번째 팔레트 버튼) ---');
-  // 웨이브클리어 보너스(스폰완료=1&적수<1)가 골드를 흔들지 않도록 적수>0 로 고정
+  // ---- (P) 팔레트 버튼 폴링: 한 버튼 고른 뒤에도 다른 버튼이 먹힘 (버그 회귀 가드) ----
+  // 예전 버그: 화살탑을 고르면 유령미리보기(맨 앞)가 마우스 위에 떠 다음 버튼의 when-clicked 를
+  // 가로채 안 눌렸음. 이제 마우스 누름 폴링이라 front 가림과 무관하게 동작 — 1 고른 뒤 2/3/4 도달 검증.
+  console.log('--- (P) 팔레트 버튼 폴링 (1 고른 뒤 2·3·4 도달) ---');
+  // 웨이브클리어/게임오버 감시가 흔들지 않게 고정 + 대포/마법 강제 해금
+  setVar('스폰완료', 1); setVar('적수', 5); setVar('성체력', 20);
+  setVar('게임상태', 1); setVar('대포탑해금', 1); setVar('마법탑해금', 1);
+  // 골드를 낮게(40) 둬서 건설커서 폴링이 팔레트 띠에서 포탑을 설치하지 못하게(40 < 모든 포탑가격)
+  // → headless 는 front 가림은 못 보지만, '마우스 y<-116 팔레트 띠' 폴링 경로는 그대로 재현됨.
+  setVar('골드', 40); setVar('선택포탑', 0);
+  // 팔레트 띠 한 가운데 y=-150. 버튼 중심 x: 1→-174, 2→-58, 3→58, 4→174
+  async function pressPalette(sx) {     // 누름→대기→떼기 (1클릭=1동작 디바운스)
+    setMouseScratch(sx, -150, true); await sleep(200);
+    setMouseScratch(sx, -150, false); await sleep(140);
+  }
+  await pressPalette(-174);
+  check('팔레트 버튼1(화살탑) 폴링 클릭 → 선택포탑=1', Number(stageVars().선택포탑) === 1, `선택포탑=${stageVars().선택포탑}`);
+  await pressPalette(-58);
+  check('버튼1 고른 뒤에도 버튼2(대포탑) 먹힘 → 선택포탑=2 (버그 회귀 가드)', Number(stageVars().선택포탑) === 2, `선택포탑=${stageVars().선택포탑}`);
+  await pressPalette(58);
+  check('버튼2 고른 뒤에도 버튼3(마법탑) 먹힘 → 선택포탑=3 (버그 회귀 가드)', Number(stageVars().선택포탑) === 3, `선택포탑=${stageVars().선택포탑}`);
+  check('버튼 폴링 동안 골드 불변(팔레트 띠 클릭은 포탑 설치 안 됨, 40)', Number(stageVars().골드) === 40, `골드=${stageVars().골드}`);
+
+  // ---- (R) 성수리 버튼 (팔레트 4구간 = 마우스 x≥116, y<-116 띠 폴링) ----
+  console.log('--- (R) 성수리 (4번째 팔레트 버튼, 폴링) ---');
   setVar('스폰완료', 1); setVar('적수', 5);
   setVar('게임상태', 1); setVar('성최대체력', 20); setVar('수리비용', 60); setVar('수리량', 5);
-  setMouseScratch(174, -150, false);   // 4구간 (x≥116)
+  // 선택포탑=3(마법, 가격150) 유지 → 골드 140 이면 건설커서는 설치 실패(140<150)지만 수리(140≥60)는 성공.
+  // 즉 4번 버튼은 '한 버튼 고른 뒤에도' 먹히고, 성수리는 선택포탑(3)을 안 바꿈을 함께 검증.
   // case 1: 골드 충분 + 성 안 풀피 → 수리
-  setVar('골드', 200); setVar('성체력', 10); setVar('선택포탑', 1);
-  vm.runtime.startHats('event_whenthisspriteclicked');
-  await sleep(220);
+  setVar('골드', 140); setVar('성체력', 10); setVar('선택포탑', 3);
+  await pressPalette(174);
   let r = stageVars();
-  check('성수리: 골드 -수리비용 (200→140)', Number(r.골드) === 140, `골드=${r.골드}`);
+  check('성수리: 골드 -수리비용 (140→80)', Number(r.골드) === 80, `골드=${r.골드}`);
   check('성수리: 성체력 +수리량 (10→15)', Number(r.성체력) === 15, `성체력=${r.성체력}`);
-  check('성수리는 선택포탑을 바꾸지 않음 (여전히 1)', Number(r.선택포탑) === 1, `선택포탑=${r.선택포탑}`);
+  check('버튼3 고른 뒤에도 버튼4(성수리) 먹힘 & 선택포탑 불변(여전히 3)', Number(r.선택포탑) === 3, `선택포탑=${r.선택포탑}`);
   // case 2: 상한 클램프 (성체력 18 + 5 = 23 → 20)
-  setVar('골드', 200); setVar('성체력', 18);
-  vm.runtime.startHats('event_whenthisspriteclicked');
-  await sleep(220);
+  setVar('골드', 140); setVar('성체력', 18);
+  await pressPalette(174);
   r = stageVars();
   check('성수리 상한 클램프: 성체력 18→20 (24 아님, 민감도)', Number(r.성체력) === 20, `성체력=${r.성체력}`);
-  check('클램프 시에도 골드는 차감됨 (200→140)', Number(r.골드) === 140, `골드=${r.골드}`);
+  check('클램프 시에도 골드는 차감됨 (140→80)', Number(r.골드) === 80, `골드=${r.골드}`);
   // case 3: 이미 풀피 → 변화 없음
-  setVar('골드', 200); setVar('성체력', 20);
-  vm.runtime.startHats('event_whenthisspriteclicked');
-  await sleep(220);
+  setVar('골드', 140); setVar('성체력', 20);
+  await pressPalette(174);
   r = stageVars();
-  check('이미 풀피면 수리 안 됨 (골드·성체력 불변)', Number(r.골드) === 200 && Number(r.성체력) === 20, `골드=${r.골드} 성체력=${r.성체력}`);
-  // case 4: 골드 부족 → 변화 없음
+  check('이미 풀피면 수리 안 됨 (골드·성체력 불변)', Number(r.골드) === 140 && Number(r.성체력) === 20, `골드=${r.골드} 성체력=${r.성체력}`);
+  // case 4: 골드 부족 → 변화 없음 (수리비용 60 > 골드 30)
   setVar('골드', 30); setVar('성체력', 10);
-  vm.runtime.startHats('event_whenthisspriteclicked');
-  await sleep(220);
+  await pressPalette(174);
   r = stageVars();
   check('골드 부족 시 수리 안 됨 (골드·성체력 불변, 민감도)', Number(r.골드) === 30 && Number(r.성체력) === 10, `골드=${r.골드} 성체력=${r.성체력}`);
+  setVar('선택포탑', 0); setMouseScratch(0, 0, false);
 
   // ---- (S) ⚡ 전체 번개 주문 (스페이스 / HUD 버튼 시전) ----
   console.log('--- (S) 전체 번개 주문 ⚡ ---');
