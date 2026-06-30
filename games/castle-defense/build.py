@@ -569,7 +569,7 @@ V_MAG       = "varMaG37"         # 마법탑_간격 0.85
 V_MAS       = "varMaS38"         # 마법탑_폭발반경 20
 V_REPAIRCOST= "varRepairCost39"  # 수리비용 60   (튜닝 39)
 V_REPAIRAMT = "varRepairAmt40"   # 수리량 5      (튜닝 40)
-V_SPELLDMG  = "varSpellDmg41"    # 주문공격력 5  (튜닝 41 — 전체 번개 데미지)
+V_SPELLDMG  = "varSpellDmg41"    # 주문공격력 9999 (튜닝 41 — 전체 번개: 원턴킬)
 V_SPELLCD   = "varSpellCD42"     # 주문쿨 6      (튜닝 42 — 재사용 대기 초)
 
 # ----- 5.2 진행/내부 상태 40 -----
@@ -925,7 +925,7 @@ def build_stage_blocks():
     add_set("마법탑_폭발반경", V_MAS, 20)
     add_set("수리비용", V_REPAIRCOST, 60)
     add_set("수리량", V_REPAIRAMT, 5)
-    add_set("주문공격력", V_SPELLDMG, 5)
+    add_set("주문공격력", V_SPELLDMG, 9999)
     add_set("주문쿨", V_SPELLCD, 6)
 
     # ── 진행 상태 41 (골드=기본골드, 성체력=성최대체력 참조) ──
@@ -2335,7 +2335,7 @@ def main():
             V_CAG: ["대포탑_간격", 1.3], V_CAS: ["대포탑_폭발반경", 60], V_MAR: ["마법탑_사거리", 150],
             V_MAD: ["마법탑_공격력", 4], V_MAG: ["마법탑_간격", 0.85], V_MAS: ["마법탑_폭발반경", 20],
             V_REPAIRCOST: ["수리비용", 60], V_REPAIRAMT: ["수리량", 5],
-            V_SPELLDMG: ["주문공격력", 5], V_SPELLCD: ["주문쿨", 6],
+            V_SPELLDMG: ["주문공격력", 9999], V_SPELLCD: ["주문쿨", 6],
             # 진행 41
             V_STATE: ["게임상태", 1], V_WAVE: ["웨이브", 1], V_GOLDCUR: ["골드", 150],
             V_CASTLE: ["성체력", 20], V_ALIVE: ["적수", 0], V_SPAWNED: ["스폰완료", 0],

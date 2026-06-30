@@ -58,11 +58,11 @@ function setMouseScratch(sx, sy, isDown) {
     화살탑_사거리:120, 화살탑_공격력:2, 화살탑_간격:0.45, 화살탑_폭발반경:16,
     대포탑_사거리:100, 대포탑_공격력:3, 대포탑_간격:1.3, 대포탑_폭발반경:60,
     마법탑_사거리:150, 마법탑_공격력:5, 마법탑_간격:0.85, 마법탑_폭발반경:20,
-    수리비용:60, 수리량:5, 주문공격력:5, 주문쿨:6,
+    수리비용:60, 수리량:5, 주문공격력:9999, 주문쿨:6,
   };
   let initOK = true, bad = [];
   for (const k in expect) if (Number(v[k]) !== Number(expect[k])) { initOK = false; bad.push(`${k}=${v[k]}`); }
-  check('튜닝 42개 기본값 초기화 (주문공격력5·주문쿨6 포함)', initOK, bad.join(', ') || 'all OK');
+  check('튜닝 42개 기본값 초기화 (주문공격력9999=원턴킬·주문쿨6 포함)', initOK, bad.join(', ') || 'all OK');
   check('진행: 주문쿨남음=0 (전체 번개 준비됨)', Number(v.주문쿨남음) === 0, `주문쿨남음=${v.주문쿨남음}`);
   check('진행: 게임상태=1, 웨이브=1, 골드=기본골드(250), 성체력=성최대체력(20)',
         v.게임상태==1 && v.웨이브==1 && v.골드==250 && v.성체력==20,
@@ -407,6 +407,17 @@ function setMouseScratch(sx, sy, isDown) {
   check('게임상태≠1 일 때 시전 차단 (전투중만 발동)', stateBlock,
         smon.map(c => cloneLocal(c, '내체력')).join(' '));
   setVar('게임상태', 1);
+
+  // (S2) 기본값 주문공격력=9999 → 원턴킬: 단단한 몬스터도 한 방에 전멸
+  console.log('--- (S2) 원턴킬 (기본 주문공격력 9999) ---');
+  setVar('주문공격력', 9999); setVar('주문쿨남음', 0);
+  for (const c of smon) if (vm.runtime.targets.includes(c)) setCloneLocal(c, '내체력', 500); // 일부러 매우 단단하게
+  const aliveBefore = smon.filter(c => vm.runtime.targets.includes(c)).length;
+  vm.runtime.startHats('event_whenkeypressed', { KEY_OPTION: 'space' });
+  await sleep(400); // 처치 루프(폭발/삭제)까지 시간
+  const aliveAfter = clones('몬스터').filter(c => smon.includes(c) && vm.runtime.targets.includes(c)).length;
+  check('주문공격력 9999 → 체력 500짜리도 전부 처치 (원턴킬)', aliveBefore >= 1 && aliveAfter === 0,
+        `생존 ${aliveBefore}→${aliveAfter}`);
 
   // ---- (12) sounds 14 (orphan 0) ----
   console.log('--- (12) 합성 효과음 14종 ---');
