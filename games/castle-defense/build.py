@@ -896,10 +896,10 @@ def build_stage_blocks():
     add_set("대포탑해금웨이브", V_UNLKC, 2)
     add_set("마법탑해금웨이브", V_UNLKM, 4)
     add_set("기본몬스터수", V_BASECNT, 6)
-    add_set("웨이브당몬스터증가", V_CNTINC, 2)
+    add_set("웨이브당몬스터증가", V_CNTINC, 3)
     add_set("몬스터간격", V_SPGAP, 0.8)
-    add_set("웨이브체력증가", V_HPINC, 2)
-    add_set("웨이브속도증가", V_SPINC, 0.1)
+    add_set("웨이브체력증가", V_HPINC, 8)
+    add_set("웨이브속도증가", V_SPINC, 0.13)
     add_set("도달반경", V_REACH, 12)
     add_set("탄속도", V_BOLTSPD, 9)
     add_set("고블린_체력", V_GOBHP, 3)
@@ -2325,7 +2325,7 @@ def main():
             V_COSTM: ["마법탑가격", 150], V_WAVEGOLD: ["웨이브클리어골드", 30], V_UPGOLD: ["강화골드량", 40],
             V_UP: ["강화량", 1], V_CASTLEMAX: ["성최대체력", 20], V_UNLKC: ["대포탑해금웨이브", 2],
             V_UNLKM: ["마법탑해금웨이브", 4], V_BASECNT: ["기본몬스터수", 6], V_CNTINC: ["웨이브당몬스터증가", 2],
-            V_SPGAP: ["몬스터간격", 0.8], V_HPINC: ["웨이브체력증가", 2], V_SPINC: ["웨이브속도증가", 0.1],
+            V_SPGAP: ["몬스터간격", 0.8], V_HPINC: ["웨이브체력증가", 8], V_SPINC: ["웨이브속도증가", 0.13],
             V_REACH: ["도달반경", 12], V_BOLTSPD: ["탄속도", 9],
             V_GOBHP: ["고블린_체력", 3], V_GOBSP: ["고블린_속도", 2.2], V_GOBGOLD: ["고블린_골드", 5],
             V_ORCHP: ["오크_체력", 8], V_ORCSP: ["오크_속도", 1.5], V_ORCGOLD: ["오크_골드", 10],

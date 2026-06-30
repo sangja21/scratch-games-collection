@@ -52,7 +52,7 @@ function setMouseScratch(sx, sy, isDown) {
   const expect = {
     기본골드:250, 화살탑가격:50, 대포탑가격:100, 마법탑가격:150, 웨이브클리어골드:40,
     강화골드량:40, 강화량:1, 성최대체력:20, 대포탑해금웨이브:2, 마법탑해금웨이브:4,
-    기본몬스터수:6, 웨이브당몬스터증가:2, 몬스터간격:0.8, 웨이브체력증가:2, 웨이브속도증가:0.1,
+    기본몬스터수:6, 웨이브당몬스터증가:3, 몬스터간격:0.8, 웨이브체력증가:8, 웨이브속도증가:0.13,
     도달반경:12, 탄속도:9, 고블린_체력:3, 고블린_속도:2.2, 고블린_골드:5,
     오크_체력:8, 오크_속도:1.5, 오크_골드:10, 트롤_체력:20, 트롤_속도:0.9, 트롤_골드:25,
     화살탑_사거리:120, 화살탑_공격력:2, 화살탑_간격:0.45, 화살탑_폭발반경:16,
@@ -241,11 +241,12 @@ function setMouseScratch(sx, sy, isDown) {
   await sleep(900);
   const fresh = clones('몬스터').filter(c => !beforeSet.has(c));
   check('웨이브5에서 새 몬스터 스폰', fresh.length >= 1, `fresh=${fresh.length}`);
-  // 내체력 = 종류체력 + (웨이브-1)*웨이브체력증가 = base + 4*2 = base+8
+  // 내체력 = 종류체력 + (웨이브-1)*웨이브체력증가 (웨이브5 → 4 × 웨이브체력증가)
   const baseHp = {1:3, 2:8, 3:20};
+  const hpInc = Number(stageVars().웨이브체력증가);
   const scaleOK = fresh.length >= 1 && fresh.every(c => {
     const ty = Number(cloneLocal(c,'내타입'));
-    return Number(cloneLocal(c,'내체력')) === baseHp[ty] + 4 * 2;
+    return Number(cloneLocal(c,'내체력')) === baseHp[ty] + 4 * hpInc;
   });
   check('새 몬스터 내체력 = 종류체력 + (웨이브-1)×웨이브체력증가', scaleOK,
         fresh.map(c=>`t${cloneLocal(c,'내타입')}:hp${cloneLocal(c,'내체력')}`).join(' '));
