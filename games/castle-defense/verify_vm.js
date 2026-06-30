@@ -58,12 +58,13 @@ function setMouseScratch(sx, sy, isDown) {
     화살탑_사거리:120, 화살탑_공격력:2, 화살탑_간격:0.45, 화살탑_폭발반경:16,
     대포탑_사거리:100, 대포탑_공격력:3, 대포탑_간격:1.3, 대포탑_폭발반경:60,
     마법탑_사거리:150, 마법탑_공격력:5, 마법탑_간격:0.85, 마법탑_폭발반경:20,
-    수리비용:60, 수리량:5, 주문공격력:9999, 주문쿨:6,
+    수리비용:60, 수리량:5, 주문공격력:9999, 주문쿨:20, 주문최대횟수:3,
   };
   let initOK = true, bad = [];
   for (const k in expect) if (Number(v[k]) !== Number(expect[k])) { initOK = false; bad.push(`${k}=${v[k]}`); }
-  check('튜닝 42개 기본값 초기화 (주문공격력9999=원턴킬·주문쿨6 포함)', initOK, bad.join(', ') || 'all OK');
+  check('튜닝 43개 기본값 초기화 (주문공격력9999=원턴킬·주문쿨20·주문최대횟수3 포함)', initOK, bad.join(', ') || 'all OK');
   check('진행: 주문쿨남음=0 (전체 번개 준비됨)', Number(v.주문쿨남음) === 0, `주문쿨남음=${v.주문쿨남음}`);
+  check('진행: 주문횟수=주문최대횟수(3) — 게임 재시작 시 3번 충전', Number(v.주문횟수) === 3, `주문횟수=${v.주문횟수}`);
   check('진행: 게임상태=1, 웨이브=1, 골드=기본골드(250), 성체력=성최대체력(20)',
         v.게임상태==1 && v.웨이브==1 && v.골드==250 && v.성체력==20,
         `state=${v.게임상태} wave=${v.웨이브} gold=${v.골드} castle=${v.성체력}`);
@@ -358,6 +359,7 @@ function setMouseScratch(sx, sy, isDown) {
   setVar('성체력', 20); setVar('스폰완료', 1); setVar('적수', 5);
   setVar('게임상태', 1); setVar('웨이브', 1);
   setVar('주문공격력', 5); setVar('주문쿨', 6); setVar('주문쿨남음', 0);
+  setVar('주문횟수', 99); // (S)/(S2) 회귀 테스트는 횟수 가드에 막히지 않게 충분히 세팅
   // 화면에 몬스터 3마리 스폰
   setVar('생성타입', 1);
   for (let i = 0; i < 3; i++) { vm.runtime.startHats('event_whenbroadcastreceived', { BROADCAST_OPTION: '몬스터생성' }); await sleep(70); }
@@ -389,7 +391,7 @@ function setMouseScratch(sx, sy, isDown) {
   // HUD 버튼 클릭 시전 (쿨 리셋 후) — 주문버튼 타깃만 클릭
   setVar('주문쿨남음', 0);
   const sbtn = orig('주문버튼');
-  check('주문버튼(HUD) 스프라이트 존재 + 코스튬 2(준비됨/충전중)', !!sbtn && sbtn.getCostumes().length === 2,
+  check('주문버튼(HUD) 스프라이트 존재 + 코스튬 3(준비됨/충전중/소진)', !!sbtn && sbtn.getCostumes().length === 3,
         sbtn ? sbtn.getCostumes().map(c => c.name).join(',') : 'none');
   const before3 = smon.map(c => Number(cloneLocal(c, '내체력')));
   vm.runtime.startHats('event_whenthisspriteclicked', null, sbtn);
@@ -419,6 +421,59 @@ function setMouseScratch(sx, sy, isDown) {
   const aliveAfter = clones('몬스터').filter(c => smon.includes(c) && vm.runtime.targets.includes(c)).length;
   check('주문공격력 9999 → 체력 500짜리도 전부 처치 (원턴킬)', aliveBefore >= 1 && aliveAfter === 0,
         `생존 ${aliveBefore}→${aliveAfter}`);
+
+  // ---- (S3) 제한 자원형 궁극기: 게임당 주문최대횟수(3)번·긴 쿨(20) ----
+  console.log('--- (S3) 제한 자원 궁극기 (3번·긴 쿨) ---');
+  setVar('성체력', 20); setVar('스폰완료', 1); setVar('적수', 5);
+  setVar('게임상태', 1); setVar('웨이브', 1);
+  setVar('주문공격력', 5); setVar('주문쿨', 20); setVar('주문최대횟수', 3);
+  // 신선한 몬스터 2마리 스폰(앞 (S2)에서 모두 처치됨) — 번개로 안 죽게 체력 높임
+  setVar('생성타입', 1);
+  for (let i = 0; i < 2; i++) { vm.runtime.startHats('event_whenbroadcastreceived', { BROADCAST_OPTION: '몬스터생성' }); await sleep(70); }
+  await sleep(200);
+  let s3mon = clones('몬스터').filter(c => vm.runtime.targets.includes(c));
+  for (const c of s3mon) setCloneLocal(c, '내체력', 50);
+  check('(S3) 테스트용 몬스터 존재 (>=1)', s3mon.length >= 1, `mon=${s3mon.length}`);
+
+  // 1회 시전 → 주문횟수 3→2, 주문쿨남음=주문쿨(20)
+  setVar('주문횟수', 3); setVar('주문쿨남음', 0);
+  vm.runtime.startHats('event_whenkeypressed', { KEY_OPTION: 'space' });
+  await sleep(230);
+  v = stageVars();
+  check('1회 시전 → 주문횟수 3→2 (1회 차감)', Number(v.주문횟수) === 2, `주문횟수=${v.주문횟수}`);
+  check('1회 시전 → 주문쿨남음=주문쿨(20)', Number(v.주문쿨남음) > 19 && Number(v.주문쿨남음) <= 20,
+        `주문쿨남음=${Number(v.주문쿨남음).toFixed(2)}`);
+
+  // 3회 소진: 쿨을 매번 0으로 풀어주며 3번 시전 → 주문횟수 3→0
+  setVar('주문횟수', 3);
+  for (let i = 0; i < 3; i++) {
+    setVar('주문쿨남음', 0);
+    vm.runtime.startHats('event_whenkeypressed', { KEY_OPTION: 'space' });
+    await sleep(200);
+  }
+  v = stageVars();
+  check('3회 시전(쿨 매번 0으로 풀어줌) → 주문횟수 3→0 (소진)', Number(v.주문횟수) === 0, `주문횟수=${v.주문횟수}`);
+
+  // 4번째 시전 차단: 쿨이 풀려 있어도 주문횟수=0 이면 발동 안 됨
+  s3mon = s3mon.filter(c => vm.runtime.targets.includes(c));
+  const before4th = s3mon.map(c => Number(cloneLocal(c, '내체력')));
+  setVar('주문쿨남음', 0);
+  vm.runtime.startHats('event_whenkeypressed', { KEY_OPTION: 'space' });
+  await sleep(230);
+  const block4 = s3mon.length >= 1 && s3mon.every((c, i) => Number(cloneLocal(c, '내체력')) === before4th[i]);
+  check('4번째 시전 차단 — 주문횟수=0 → 몬스터 내체력 불변', block4,
+        s3mon.map(c => cloneLocal(c, '내체력')).join(' '));
+  check('4번째 차단 → 주문횟수 음수 안 됨 (0 유지)', Number(stageVars().주문횟수) === 0,
+        `주문횟수=${stageVars().주문횟수}`);
+  // HUD 클릭도 동일하게 차단되는지(같은 가드)
+  const sbtn3 = orig('주문버튼');
+  setVar('주문쿨남음', 0);
+  const beforeClick = s3mon.map(c => Number(cloneLocal(c, '내체력')));
+  vm.runtime.startHats('event_whenthisspriteclicked', null, sbtn3);
+  await sleep(220);
+  const blockClick = s3mon.length >= 1 && s3mon.every((c, i) => Number(cloneLocal(c, '내체력')) === beforeClick[i]);
+  check('소진 상태 HUD 클릭도 차단 (주문횟수=0)', blockClick,
+        s3mon.map(c => cloneLocal(c, '내체력')).join(' '));
 
   // ---- (12) sounds 14 (orphan 0) ----
   console.log('--- (12) 합성 효과음 14종 ---');

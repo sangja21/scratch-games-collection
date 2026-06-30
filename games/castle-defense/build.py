@@ -14,7 +14,7 @@
     클론 스포너 + 복제됨 가드 / 폭발 연출 / 전용 합성 효과음(_wav_bytes·synth_*) /
     add_comment 가이드 투어.
 
-★ 모든 조절 값(42개)을 한글 전역 변수로만 노출, 코드 어디서도 매직넘버를 쓰지
+★ 모든 조절 값(43개)을 한글 전역 변수로만 노출, 코드 어디서도 매직넘버를 쓰지
   않는다(연출용 repeat 5 / 도달반경 비교 같은 소수 인라인만 허용). 초기화는 전부
   Stage 깃발 클릭 한 스크립트에 모은다. 길은 경로X/경로Y 리스트 6점.
 """
@@ -465,21 +465,23 @@ def _lightning_svg(seed):
 
 LIGHTNING_SVGS = [_lightning_svg(700 + i) for i in range(3)]
 
-# -------- 주문버튼(HUD): ⚡ 전체 번개 — 준비됨/충전중 2코스튬(시후가 한눈에) --------
-def _spell_icon_svg(ready):
-    bg     = "#1565C0" if ready else "#37474F"
-    ring   = "#FFF176" if ready else "#607D8B"
-    bolt   = "#FFEB3B" if ready else "#90A4AE"
-    bstrk  = "#F9A825" if ready else "#546E7A"
-    label  = "준비!" if ready else "충전중"
-    lblfil = "#FFFFFF" if ready else "#B0BEC5"
+# -------- 주문버튼(HUD): ⚡ 전체 번개 — 준비됨/충전중/소진 3코스튬(시후가 한눈에) --------
+def _spell_icon_svg(state):
+    # state: "ready" | "charge" | "exhaust"
+    pal = {
+        "ready":   ("#1565C0", "#FFF176", "#FFEB3B", "#F9A825", "준비!", "#FFFFFF"),
+        "charge":  ("#37474F", "#607D8B", "#90A4AE", "#546E7A", "충전중", "#B0BEC5"),
+        "exhaust": ("#3E2723", "#8D6E63", "#6D4C41", "#4E342E", "소진!", "#D7CCC8"),
+    }
+    bg, ring, bolt, bstrk, label, lblfil = pal[state]
     return f"""<svg xmlns="http://www.w3.org/2000/svg" width="70" height="84" viewBox="0 0 70 84">
   <circle cx="35" cy="33" r="30" fill="{bg}" stroke="{ring}" stroke-width="4"/>
   <polygon points="42,12 23,40 34,40 28,58 51,28 39,28" fill="{bolt}" stroke="{bstrk}" stroke-width="2" stroke-linejoin="round"/>
   <text x="35" y="79" text-anchor="middle" font-family="Arial" font-size="15" font-weight="bold" fill="{lblfil}">{label}</text>
 </svg>"""
-SPELL_READY_SVG   = _spell_icon_svg(True)
-SPELL_CHARGE_SVG  = _spell_icon_svg(False)
+SPELL_READY_SVG    = _spell_icon_svg("ready")
+SPELL_CHARGE_SVG   = _spell_icon_svg("charge")
+SPELL_EXHAUST_SVG  = _spell_icon_svg("exhaust")
 
 # -------- 숫자 코스튬: 흰 0~9(데미지) + 금 0~9(골드) — say 미사용 --------
 def _digit_svg(d, fill, stroke):
@@ -570,7 +572,8 @@ V_MAS       = "varMaS38"         # 마법탑_폭발반경 20
 V_REPAIRCOST= "varRepairCost39"  # 수리비용 60   (튜닝 39)
 V_REPAIRAMT = "varRepairAmt40"   # 수리량 5      (튜닝 40)
 V_SPELLDMG  = "varSpellDmg41"    # 주문공격력 9999 (튜닝 41 — 전체 번개: 원턴킬)
-V_SPELLCD   = "varSpellCD42"     # 주문쿨 6      (튜닝 42 — 재사용 대기 초)
+V_SPELLCD   = "varSpellCD42"     # 주문쿨 20     (튜닝 42 — 재사용 대기 초, 길게)
+V_SPELLMAX  = "varSpellMax43"    # 주문최대횟수 3 (튜닝 43 — 게임당 시전 가능 횟수)
 
 # ----- 5.2 진행/내부 상태 40 -----
 V_STATE   = "varState39"      # 게임상태 1
@@ -614,6 +617,7 @@ V_DMGOFF  = "varDmgOff76"     # 데미지오프셋 0
 V_DMGLEN  = "varDmgLen77"     # 데미지글자수 0
 V_DMGPOS  = "varDmgPos78"     # 데미지자리 0
 V_SPELLLEFT = "varSpellLeft79" # 주문쿨남음 0  (진행 41 — >0 동안 재시전 불가, 틱 감소)
+V_SPELLCOUNT= "varSpellCount80" # 주문횟수 3   (진행 42 — 남은 시전 횟수, 0이면 소진)
 
 # ----- 5.3 리스트 -----
 L_PATHX = "listPathX"   # 경로X
@@ -884,7 +888,7 @@ def build_stage_blocks():
         sid = b_setvar(bs, name, vid, val)
         seq.append((sid, bs[sid]))
 
-    # ── 튜닝 42 (개조 손잡이) ──
+    # ── 튜닝 43 (개조 손잡이) ──
     add_set("기본골드", V_GOLD0, 250)
     add_set("화살탑가격", V_COSTA, 50)
     add_set("대포탑가격", V_COSTC, 100)
@@ -926,7 +930,8 @@ def build_stage_blocks():
     add_set("수리비용", V_REPAIRCOST, 60)
     add_set("수리량", V_REPAIRAMT, 5)
     add_set("주문공격력", V_SPELLDMG, 9999)
-    add_set("주문쿨", V_SPELLCD, 6)
+    add_set("주문쿨", V_SPELLCD, 20)
+    add_set("주문최대횟수", V_SPELLMAX, 3)
 
     # ── 진행 상태 41 (골드=기본골드, 성체력=성최대체력 참조) ──
     add_set("게임상태", V_STATE, 1)
@@ -972,6 +977,9 @@ def build_stage_blocks():
     add_set("데미지글자수", V_DMGLEN, 0)
     add_set("데미지자리", V_DMGPOS, 0)
     add_set("주문쿨남음", V_SPELLLEFT, 0)
+    # 게임 재시작마다 남은 주문 횟수를 주문최대횟수(3)로 리셋 → 아껴 쓰는 궁극기
+    spc_r = vrep("주문최대횟수", V_SPELLMAX)
+    sid = b_setvar(bs, "주문횟수", V_SPELLCOUNT, spc_r); seq.append((sid, bs[sid]))
 
     # ── 경로(웨이포인트) 리스트 6점 ──
     delx = b_delete_all(bs, "경로X", L_PATHX); seq.append((delx, bs[delx]))
@@ -2188,15 +2196,19 @@ def build_spellbutton_blocks():
         return nb
 
     def cast_chain():
-        # if (주문쿨남음<=0) and (게임상태=1) → 주문쿨남음=주문쿨 ; 우르릉 ; 주문시전 방송
+        # if (주문쿨남음<=0) and (게임상태=1) and (주문횟수>0)
+        #   → 주문쿨남음=주문쿨 ; 주문횟수-1 ; 우르릉 ; 주문시전 방송
+        # 게임당 주문최대횟수(3)번만 쓸 수 있고 긴 쿨(20). 아껴 쓰는 필살기.
         left_pos = cmp_op("operator_gt", vrep("주문쿨남음", V_SPELLLEFT), 0)
         not_cd = b_not(left_pos)                                  # 주문쿨남음<=0 (부동소수 등호 금지)
         st = cmp_op("operator_equals", vrep("게임상태", V_STATE), 1)
-        cond = bool_op("operator_and", not_cd, st)
+        cnt_pos = cmp_op("operator_gt", vrep("주문횟수", V_SPELLCOUNT), 0)  # 남은 횟수>0 (부등호)
+        cond = bool_op("operator_and", bool_op("operator_and", not_cd, st), cnt_pos)
         set_left = b_setvar(bs, "주문쿨남음", V_SPELLLEFT, vrep("주문쿨", V_SPELLCD))
+        dec_cnt = b_changevar(bs, "주문횟수", V_SPELLCOUNT, -1)   # 시전 성공 시 1회 차감
         sh, sp = b_sound(bs, 0, "thunder")
         bc = b_broadcast(bs, "주문시전", BR_SPELL)
-        chain([(set_left, bs[set_left]), (sh, bs[sh]), (sp, bs[sp]), (bc, bs[bc])])
+        chain([(set_left, bs[set_left]), (dec_cnt, bs[dec_cnt]), (sh, bs[sh]), (sp, bs[sp]), (bc, bs[bc])])
         return b_if(bs, cond, set_left)
 
     # (A) 깃발: 위치·크기·코스튬 + forever(재충전 + 준비/충전 코스튬)
@@ -2207,14 +2219,19 @@ def build_spellbutton_blocks():
     front = gen(); bs[front] = mk("looks_gotofrontback", fields={"FRONT_BACK": ["front", None]})
     show = gen(); bs[show] = mk("looks_show")
     sw_ready0 = b_costume(bs, "준비됨")
-    # forever: 재충전(주문쿨남음>0 → -0.1) + 코스튬(>0=충전중 / else 준비됨)
+    # forever: 재충전(주문쿨남음>0 → -0.1)
+    #   + 코스튬: 만약 주문횟수<=0 → 소진(준비됨 절대 안 뜸)
+    #            아니면 (주문쿨남음<=0 → 준비됨 / else 충전중)
     left_pos2 = cmp_op("operator_gt", vrep("주문쿨남음", V_SPELLLEFT), 0)
     dec_left = b_changevar(bs, "주문쿨남음", V_SPELLLEFT, -0.1)
     if_rech = b_if(bs, left_pos2, dec_left)
     left_pos3 = cmp_op("operator_gt", vrep("주문쿨남음", V_SPELLLEFT), 0)
     sw_charge = b_costume(bs, "충전중")
     sw_ready = b_costume(bs, "준비됨")
-    if_cos = b_ifelse(bs, left_pos3, sw_charge, sw_ready)
+    if_inner = b_ifelse(bs, left_pos3, sw_charge, sw_ready)   # 충전중 / 준비됨
+    cnt_pos_c = cmp_op("operator_gt", vrep("주문횟수", V_SPELLCOUNT), 0)  # 남은 횟수>0
+    sw_exhaust = b_costume(bs, "소진")
+    if_cos = b_ifelse(bs, cnt_pos_c, if_inner, sw_exhaust)   # >0 → 쿨 표시 / 0이하 → 소진
     w = b_wait(bs, 0.1)
     chain([(if_rech, bs[if_rech]), (if_cos, bs[if_cos]), (w, bs[w])])
     fe = b_forever(bs, if_rech)
@@ -2234,13 +2251,15 @@ def build_spellbutton_blocks():
 
     add_comment(bs, comments, hk,
         "⚡ 스페이스 키(또는 이 번개 버튼 클릭)로 전체 번개 주문을 써요!\n"
-        "주문쿨남음이 0 이하이고 전투중(게임상태=1)일 때만 발동해요. 쓰면 주문쿨남음=주문쿨 로 "
-        "채워져 재충전 동안엔 다시 못 써요(연타 가드). 우르릉 소리와 함께 화면이 번쩍!",
-        x=720, y=20, w=350, h=180)
+        "이 주문은 게임당 딱 주문최대횟수(3)번만 쓸 수 있는 필살기예요. 주문쿨남음이 0 이하이고 "
+        "전투중(게임상태=1)이면서 주문횟수가 0보다 클 때만 발동! 쓰면 주문횟수가 1 줄고 주문쿨남음="
+        "주문쿨(20)로 채워져, 긴 쿨 동안엔 다시 못 써요. 3번 다 쓰면 더 못 써요. 우르릉 번쩍!",
+        x=720, y=20, w=350, h=200)
     add_comment(bs, comments, fe,
-        "🔋 재충전: 주문쿨남음이 0보다 크면 매 0.1초마다 0.1씩 줄어요. 0 이하가 되면 '준비됨' "
-        "코스튬으로 바뀌어 다시 쓸 수 있어요(부동소수 등호 대신 >0 / <=0 부등호 사용).",
-        x=-360, y=320, w=330, h=150)
+        "🔋 재충전·남은 횟수 표시: 주문쿨남음이 0보다 크면 매 0.1초마다 0.1씩 줄어요. "
+        "코스튬은 — 주문횟수가 0 이하면 '소진'(준비됨이 절대 안 떠서 더 못 씀이 보여요), 아니면 "
+        "주문쿨남음 0 이하일 때 '준비됨' / 충전 중이면 '충전중'(부동소수 등호 대신 >0 / <=0 부등호).",
+        x=-360, y=320, w=340, h=180)
     return bs, comments
 
 # ============================================================
@@ -2276,6 +2295,7 @@ def main():
     light_md5  = [save_svg(s) for s in LIGHTNING_SVGS]
     spr_md5    = save_svg(SPELL_READY_SVG)
     spc_md5    = save_svg(SPELL_CHARGE_SVG)
+    spx_md5    = save_svg(SPELL_EXHAUST_SVG)
     wd_md5     = [save_svg(s) for s in WHITE_DIGITS]
     gd_md5     = [save_svg(s) for s in GOLD_DIGITS]
 
@@ -2320,7 +2340,7 @@ def main():
     stage = {
         "isStage": True, "name": "Stage",
         "variables": {
-            # 튜닝 42
+            # 튜닝 43
             V_GOLD0: ["기본골드", 150], V_COSTA: ["화살탑가격", 50], V_COSTC: ["대포탑가격", 100],
             V_COSTM: ["마법탑가격", 150], V_WAVEGOLD: ["웨이브클리어골드", 30], V_UPGOLD: ["강화골드량", 40],
             V_UP: ["강화량", 1], V_CASTLEMAX: ["성최대체력", 20], V_UNLKC: ["대포탑해금웨이브", 2],
@@ -2335,7 +2355,8 @@ def main():
             V_CAG: ["대포탑_간격", 1.3], V_CAS: ["대포탑_폭발반경", 60], V_MAR: ["마법탑_사거리", 150],
             V_MAD: ["마법탑_공격력", 4], V_MAG: ["마법탑_간격", 0.85], V_MAS: ["마법탑_폭발반경", 20],
             V_REPAIRCOST: ["수리비용", 60], V_REPAIRAMT: ["수리량", 5],
-            V_SPELLDMG: ["주문공격력", 9999], V_SPELLCD: ["주문쿨", 6],
+            V_SPELLDMG: ["주문공격력", 9999], V_SPELLCD: ["주문쿨", 20],
+            V_SPELLMAX: ["주문최대횟수", 3],
             # 진행 41
             V_STATE: ["게임상태", 1], V_WAVE: ["웨이브", 1], V_GOLDCUR: ["골드", 150],
             V_CASTLE: ["성체력", 20], V_ALIVE: ["적수", 0], V_SPAWNED: ["스폰완료", 0],
@@ -2351,6 +2372,7 @@ def main():
             V_DMGX: ["데미지표시x", 0], V_DMGY: ["데미지표시y", 0], V_DMGKIND: ["팝업종류", 0],
             V_DMGDIG: ["데미지숫자", 0], V_DMGOFF: ["데미지오프셋", 0], V_DMGLEN: ["데미지글자수", 0],
             V_DMGPOS: ["데미지자리", 0], V_SPELLLEFT: ["주문쿨남음", 0],
+            V_SPELLCOUNT: ["주문횟수", 3],
         },
         "lists": {
             L_PATHX: ["경로X", []],
@@ -2604,6 +2626,8 @@ def main():
              "assetId": spr_md5, "md5ext": f"{spr_md5}.svg", "rotationCenterX": 35, "rotationCenterY": 42},
             {"name": "충전중", "bitmapResolution": 1, "dataFormat": "svg",
              "assetId": spc_md5, "md5ext": f"{spc_md5}.svg", "rotationCenterX": 35, "rotationCenterY": 42},
+            {"name": "소진", "bitmapResolution": 1, "dataFormat": "svg",
+             "assetId": spx_md5, "md5ext": f"{spx_md5}.svg", "rotationCenterX": 35, "rotationCenterY": 42},
         ],
         "sounds": [snd("thunder", thunder_s, thunder_n)],
         "volume": 100, "layerOrder": 16, "visible": True,
@@ -2625,6 +2649,11 @@ def main():
          "params": {"VARIABLE": "성체력"}, "spriteName": None,
          "value": 20, "width": 0, "height": 0, "x": 5, "y": 65,
          "visible": True, "sliderMin": 0, "sliderMax": 100, "isDiscrete": True},
+        # 남은 주문 횟수 — 주문버튼(우상단) 근처에 표시해서 몇 번 더 쓸 수 있는지 한눈에
+        {"id": V_SPELLCOUNT, "mode": "default", "opcode": "data_variable",
+         "params": {"VARIABLE": "주문횟수"}, "spriteName": None,
+         "value": 3, "width": 0, "height": 0, "x": 250, "y": 5,
+         "visible": True, "sliderMin": 0, "sliderMax": 10, "isDiscrete": True},
     ]
 
     project = {
