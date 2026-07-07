@@ -54,7 +54,7 @@ function setMouse(sx, sy, isDown) {
         v.유닛공격력배수==1 && v.유닛체력배수==1 && v.나이트해금==0 && v.룩해금==0 && v.퀸해금==0);
   check('아군 리스트 비어있음(소환 전)', (listVal('아군X')||[]).length===0);
   const gv = Object.keys(v).length;
-  check('전역 변수 129개 (방송 10개 제외; 유닛표시 +1)', gv === 129, `count=${gv}`);
+  check('전역 변수 133개 (방송 11개 제외; 3차 투사체채널 +3, 킹공성거리 +1)', gv === 133, `count=${gv}`);
   // 2차 패치 #2(템포↑): 속도·공격력↑, 공속·적체력↓
   check('템포: 폰_속도 5.5, 나이트_속도 6.0, 적폰_속도 5.0 (횡단 빠르게)',
         Number(v.폰_속도)===5.5 && Number(v.나이트_속도)===6.0 && Number(v.적폰_속도)===5.0,
@@ -62,10 +62,10 @@ function setMouse(sx, sy, isDown) {
   check('템포: 폰_공격력 6·공속 0.4 → 검은폰(체력8) 2타 결판', Number(v.폰_공격력)===6 && Number(v.폰_공속)===0.4 && Number(v.적폰_체력)===8,
         `폰뎀${v.폰_공격력} 폰공속${v.폰_공속} 적폰HP${v.적폰_체력}`);
   check('템포: 초당골드 8→14, 처치골드 2→3 (경제 비례 상향)', Number(v.초당골드)===14 && Number(v.처치골드)===3);
-  // 2차 패치 #1(비숍 버그): 원거리 사거리 대폭 상향(뒤에서 사격)
-  check('비숍 버그 수정: 원거리 사거리 필드횡단(비숍380·룩400·퀸390) → 후방 아티'+'\n'+'(적선두 사격 + 킹 공성으로 스테이지 클리어 가능)',
-        Number(v.비숍_사거리)===380 && Number(v.룩_사거리)===400 && Number(v.퀸_사거리)===390,
-        `비숍${v.비숍_사거리} 룩${v.룩_사거리} 퀸${v.퀸_사거리}`);
+  // 3차 패치: 투사체 시각화 + 국지 킹공성(직격 방지)
+  check('투사체 스프라이트 존재 + 코스튬 4(아군화살/포탄·적화살/포탄)',
+        !!orig('투사체') && orig('투사체').getCostumes().length===4);
+  check('킹공성거리=300 (후방 비숍은 킹 직격 안 됨)', Number(v.킹공성거리)===300, `킹공성거리=${v.킹공성거리}`);
   check('유닛 상한=12, 시뮬틱=0.02', Number(v.최대유닛수)===12 && Number(v.적최대유닛수)===12 && Number(v.시뮬틱)===0.02);
   check('쿨오버레이 스프라이트 존재 + 코스튬 4', !!orig('쿨오버레이') && orig('쿨오버레이').getCostumes().length===4);
   // 2차 패치 #3: n/12 유닛 표시 변수
@@ -157,24 +157,49 @@ function setMouse(sx, sy, isDown) {
   check('검은비숍(뒤)도 검은폰 앞에서 아군에게 사격(데미지>0)', admg > 0, `총 데미지=${admg}`);
   setVar('적폰_공격력', 3); setVar('적최대유닛수', 12);
 
-  // ---- (4ter) 킹 공성: 적이 살아있어도 원거리 유닛이 검은 킹을 깎는다 (스테이지 클리어 가능성) ----
-  console.log('--- (4ter) 킹 공성 (적 존재해도 원거리가 킹 사격 → 클리어 가능) ---');
+  // ---- (4ter) [3차 #2 버그] 후방 비숍은 킹 직격 안 됨 / 전방 유닛은 킹 공성 ----
+  console.log('--- (4ter) 후방 비숍 킹 직격 방지 + 전방 유닛 킹 공성 ---');
+  // (A) 후방 비숍(-175): 적유닛만 때리고 검은 킹 무피해 (직격 버그 수정)
   setVar('게임상태', 2); setVar('적최대유닛수', 0); await sleep(120);
   for (const nm of ['적군X','적군HP','적군타입','적군살아있음','적군쿨','아군X','아군HP','아군타입','아군살아있음','아군쿨']) listVal(nm).length = 0;
   setVar('검은킹체력', 500); setVar('유닛공격력배수', 1);
-  // 적 1기(살아있음=1, 적선두슬롯≠0 보장) + 아군 비숍 1기(필드 어디서든 킹 사거리 380 안)
   listVal('적군X').push(-50); listVal('적군HP').push(99999); listVal('적군타입').push(1);
   listVal('적군살아있음').push(1); listVal('적군쿨').push(0); setVar('적군수', 1);
-  listVal('아군X').push(-100); listVal('아군HP').push(9999); listVal('아군타입').push(2); // 비숍
+  listVal('아군X').push(-175); listVal('아군HP').push(9999); listVal('아군타입').push(2);  // 후방 비숍
   listVal('아군살아있음').push(1); listVal('아군쿨').push(0); setVar('아군수', 1);
-  const enK0 = Number(stageVars().검은킹체력), enFrontSlot0 = Number(stageVars().적선두슬롯);
+  const bE0 = Number(listVal('적군HP')[0]), bK0 = Number(stageVars().검은킹체력);
+  let sawProj = 0;
   setVar('게임상태', 1);
-  await sleep(900);
-  const enK1 = Number(stageVars().검은킹체력);
-  check('적 유닛 살아있는데도(적선두슬롯≠0) 비숍이 검은 킹 공성', enK1 < enK0, `검은킹 ${enK0}→${enK1}`);
-  check('적선두슬롯≠0 유지(킹이 아니라 적을 최전방으로 잡음에도 킹 공성됨)', Number(stageVars().적선두슬롯) !== 0,
-        `적선두슬롯=${stageVars().적선두슬롯}`);
+  for (let t=0;t<12;t++){ await sleep(90); sawProj = Math.max(sawProj, clones('투사체').length); }
+  check('후방 비숍(-175): 적 유닛 사격(데미지>0)', Number(listVal('적군HP')[0]) < bE0, `적유닛 Δ=${bE0-Number(listVal('적군HP')[0])}`);
+  check('#2 직격 수정: 후방 비숍은 검은 킹 무피해(dist 375>킹공성거리 300)', Number(stageVars().검은킹체력) === bK0,
+        `검은킹 Δ=${bK0-Number(stageVars().검은킹체력)}`);
+  check('#3 투사체(화살) 발사 클론 스폰(보이지 않는 공격 해소)', sawProj >= 1, `투사체 최대=${sawProj}`);
+  // (B) 전방 유닛(0, dist 200<=킹공성거리): 킹 공성으로 검은 킹 체력 감소 (승리 루트)
+  setVar('게임상태', 2); await sleep(120);
+  for (const nm of ['적군X','적군HP','적군타입','적군살아있음','적군쿨','아군X','아군HP','아군타입','아군살아있음','아군쿨']) listVal(nm).length = 0;
+  setVar('검은킹체력', 500); setVar('적군수', 0);
+  listVal('아군X').push(0); listVal('아군HP').push(9999); listVal('아군타입').push(2);  // 비숍(적 없으면 킹 사격)
+  listVal('아군살아있음').push(1); listVal('아군쿨').push(0); setVar('아군수', 1);
+  const fK0 = Number(stageVars().검은킹체력);
+  setVar('게임상태', 1); await sleep(900);
+  check('승리 루트: 전방 유닛(0, 킹공성거리 안)이 검은 킹 공성(체력 감소)', Number(stageVars().검은킹체력) < fK0,
+        `검은킹 Δ=${fK0-Number(stageVars().검은킹체력)}`);
   setVar('검은킹체력', 120); setVar('적최대유닛수', 12);
+
+  // ---- (4quad) [3차 #1] 폰 vs 검은폰 접촉 → 즉시 상호 HP 감소, 2~3타 내 결판 ----
+  console.log('--- (4quad) 폰 vs 검은폰 근접 즉발 ---');
+  setVar('게임상태', 2); setVar('적최대유닛수', 0); await sleep(120);
+  for (const nm of ['적군X','적군HP','적군타입','적군살아있음','적군쿨','아군X','아군HP','아군타입','아군살아있음','아군쿨']) listVal(nm).length = 0;
+  setVar('유닛공격력배수', 1); setVar('폰_공격력', 6); setVar('폰_속도', 0); setVar('적폰_속도', 0);
+  listVal('아군X').push(-40); listVal('아군HP').push(12); listVal('아군타입').push(1); listVal('아군살아있음').push(1); listVal('아군쿨').push(0); setVar('아군수', 1);
+  listVal('적군X').push(-15); listVal('적군HP').push(8); listVal('적군타입').push(1); listVal('적군살아있음').push(1); listVal('적군쿨').push(0); setVar('적군수', 1);
+  setVar('게임상태', 1);
+  await sleep(450);   // 0.45s 내 첫 타 나가야
+  check('폰 vs 검은폰: 접촉 즉시(0.45s) 적 HP 감소 시작', Number(listVal('적군HP')[0]) < 8, `검은폰 HP=${listVal('적군HP')[0]}`);
+  await sleep(1400);
+  check('폰(6뎀)이 검은폰(8HP)을 2~3타 내 처치(살아있음=0)', Number(listVal('적군살아있음')[0]) === 0, `살아있음=${listVal('적군살아있음')[0]}`);
+  setVar('폰_속도', 5.5); setVar('적폰_속도', 5.0);
 
   // ---- (4b) 이동 속도(틱당 X 증가량) 상향 확인 ----
   console.log('--- (4b) 이동 속도(틱당 X 증가) ---');

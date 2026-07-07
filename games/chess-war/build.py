@@ -394,6 +394,26 @@ OVERLAY_SVGS = [
     _overlay_svg("#212121", ""),         # 3 잠금(어두움)
 ]
 
+# -------- 투사체 (총알/포탄): 아군화살·아군포탄·적화살·적포탄 (색 구분) --------
+def _arrow_proj_svg(core, edge):
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="24" height="12" viewBox="0 0 24 12">
+  <line x1="2" y1="6" x2="17" y2="6" stroke="{edge}" stroke-width="3"/>
+  <polygon points="16,2 23,6 16,10" fill="{core}" stroke="{edge}" stroke-width="1"/>
+  <polygon points="2,6 6,3 6,9" fill="{core}"/>
+</svg>"""
+def _shell_proj_svg(core, glow):
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18">
+  <circle cx="9" cy="9" r="7.5" fill="{glow}" opacity="0.5"/>
+  <circle cx="9" cy="9" r="5" fill="{core}"/>
+  <circle cx="7" cy="7" r="1.6" fill="#FFFFFF" opacity="0.8"/>
+</svg>"""
+PROJ_SVGS = [
+    _arrow_proj_svg("#FFF3C4", "#B8860B"),   # 0 아군 화살(금)
+    _shell_proj_svg("#455A64", "#90CAF9"),   # 1 아군 포탄(청회색+파랑 글로우)
+    _arrow_proj_svg("#B0BEC5", "#37474F"),   # 2 적 화살(회색)
+    _shell_proj_svg("#4A148C", "#EF5350"),   # 3 적 포탄(자주+빨강 글로우)
+]
+
 # -------- 강화카드 (4선택지) --------
 CARD_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="400" height="150" viewBox="0 0 400 150">
   <rect x="4" y="4" width="392" height="142" rx="14" fill="#1A237E" opacity="0.95" stroke="#FFD54F" stroke-width="4"/>
@@ -519,6 +539,9 @@ V_DMGDIG = "varDmgDigit121"; V_DMGOFF = "varDmgOff122"; V_DMGLEN = "varDmgLen123
 # ----- 5.2b 진행 추가(플레이테스트 패치): 슬롯 재사용(메모리 상한)·오버레이 슬롯배정·스폰체력 채널 -----
 V_REUSE = "varReuse125"; V_LOOPK = "varLoopK126"; V_OVCOUNT = "varOvCount127"; V_SPAWNHP = "varSpawnHP128"
 V_UNITS = "varUnitsShown129"   # 화면 표시용 "아군수/최대유닛수" (모니터)
+# ----- 3차 패치: 투사체(총알/포탄) 채널 + 국지 킹공성 거리 -----
+V_FX = "varFireX130"; V_FTX = "varFireToX131"; V_FKIND = "varFireKind132"  # 발사X·발사목표X·발사종류(0아군화살/1아군포탄/2적화살/3적포탄)
+V_SIEGE = "varKingSiege133"   # 킹공성거리: 이 안(전선 절반)에서만 킹 공성 → 후방 비숍 직격 방지
 
 # ----- 5.3 리스트 (10) -----
 L_ALLYX = "listAllyX"; L_ALLYHP = "listAllyHP"; L_ALLYT = "listAllyT"
@@ -530,12 +553,14 @@ L_ENAL = "listEnAlive"; L_ENCD = "listEnCD"
 V_ALLY_ISC = "varAllyIsClone"; V_ALLY_SLOT = "varAllySlot"
 V_EN_ISC = "varEnIsClone"; V_EN_SLOT = "varEnSlot"
 V_POP_ISC = "varPopIsClone"
+# 투사체 클론-로컬
+V_PROJ_ISC = "varProjIsClone"; V_PROJ_KIND = "varProjKind"; V_PROJ_SX = "varProjSX"; V_PROJ_TX = "varProjTX"; V_PROJ_T = "varProjT"
 V_OV_ISC = "varOvIsClone"; V_OV_SLOT = "varOvSlot"   # 쿨오버레이 클론-로컬
 
 # ----- 5.5 메시지 (10) -----
 BR_START = "brStart01"; BR_STAGEGO = "brStageGo02"; BR_ALLY = "brAlly03"; BR_ENEMY = "brEnemy04"
 BR_DMG = "brDmg05"; BR_MYHIT = "brMyHit06"; BR_ENHIT = "brEnHit07"; BR_CLEAR = "brClear08"
-BR_UPDONE = "brUpDone09"; BR_OVER = "brOver10"
+BR_UPDONE = "brUpDone09"; BR_OVER = "brOver10"; BR_FIRE = "brFire11"   # 투사체 발사
 
 # ============================================================
 #  block-builder helpers
@@ -802,7 +827,7 @@ def build_stage_blocks():
     add_set("하얀킹최대체력", V_KINGMAX, 100); add_set("검은킹기본체력", V_ENKINGBASE, 120)
     add_set("적성장배율", V_SCALE, 1.25); add_set("나이트해금스테이지", V_UNLKKN, 2)
     add_set("룩해금스테이지", V_UNLKRK, 3); add_set("퀸해금스테이지", V_UNLKQN, 4)
-    add_set("시뮬틱", V_TICK, 0.02); add_set("킹공격거리", V_REACH, 40)
+    add_set("시뮬틱", V_TICK, 0.02); add_set("킹공격거리", V_REACH, 40); add_set("킹공성거리", V_SIEGE, 300)
     add_set("레인Y", V_LANEY, -50); add_set("하얀킹X", V_MYKX, -200); add_set("검은킹X", V_ENKX, 200)
     # 아군 스탯
     add_set("폰_체력", V_PWHP, 12); add_set("폰_공격력", V_PWATK, 6); add_set("폰_공속", V_PWCD, 0.4)
@@ -860,6 +885,7 @@ def build_stage_blocks():
     add_set("재사용슬롯", V_REUSE, 0); add_set("루프k", V_LOOPK, 0)
     add_set("오버레이카운터", V_OVCOUNT, 0); add_set("스폰체력", V_SPAWNHP, 0)
     add_set("유닛", V_UNITS, "0/12")   # 화면 표시용 n/최대 (매니저가 매 틱 갱신)
+    add_set("발사X", V_FX, 0); add_set("발사목표X", V_FTX, 0); add_set("발사종류", V_FKIND, 0)
 
     # ── 유닛 리스트 통째 비우기 ──
     for nm, lid in [("아군X", L_ALLYX), ("아군HP", L_ALLYHP), ("아군타입", L_ALLYT),
@@ -1142,38 +1168,51 @@ def build_manager_blocks():
         if_king = b_if(bs, c_king, dec_my)
         return [pc, set_j, rep, if_king]
 
-    # ── 킹 공성(siege): 상대 킹이 내 사거리(원거리) 또는 킹공격거리(근접이 성벽 도달) 안이면
-    #    매 공격마다 상대 킹 체력도 계산뎀만큼 깎는다. 전선을 앞으로 밀면 킹이 함락된다.
-    #    (이게 없으면 적이 계속 스폰돼 킹 앞을 가려서 스테이지가 안 끝남 — 플레이테스트 실측 버그.)
-    def emit_king_siege_enemy(R_id, R_nm):
-        dist = op("operator_subtract", vrep("검은킹X", V_ENKX), l_item(bs, "아군X", L_ALLYX, vrep("루프i", V_LOOPI)))
-        in_range = le(dist, vrep(R_nm, R_id))
-        dist2 = op("operator_subtract", vrep("검은킹X", V_ENKX), l_item(bs, "아군X", L_ALLYX, vrep("루프i", V_LOOPI)))
-        in_wall = le(dist2, vrep("킹공격거리", V_REACH))
+    # ── 투사체 발사(시각 전용, 공격 이벤트와 1:1): 발사X·목표X·종류 세팅 후 발사 방송(비대기).
+    #    클론/방송 과부하 방지 위해 1/2 확률로만 스폰. kind: 0아군화살·1아군포탄·2적화살·3적포탄 ──
+    def emit_projectile(fromx_expr, tox_expr, kind):
+        s1 = b_setvar(bs, "발사X", V_FX, fromx_expr)
+        s2 = b_setvar(bs, "발사목표X", V_FTX, tox_expr)
+        s3 = b_setvar(bs, "발사종류", V_FKIND, kind)
+        bc = b_broadcast(bs, "발사", BR_FIRE)
+        C(bs, [s1, s2, s3, bc])
+        rnd = op("operator_random", 1, 2, key1="FROM", key2="TO")
+        return [b_if(bs, cmp_op("operator_equals", rnd, 1), s1)]
+
+    # ── 킹 공성(국지): 상대 킹이 '킹공성거리' 안이거나 킹공격거리(성벽) 안일 때 킹 체력을 깎는다.
+    #    사거리(380)가 아니라 킹공성거리(중간값)로 게이팅 → 스폰지점(후방)의 비숍은 킹 직격 안 됨(직격 버그 방지).
+    #    전선을 킹 쪽으로 밀면 함락 → 스테이지 클리어(승리 루트 유지). 투사체로 1:1 시각화.
+    def emit_king_siege_enemy():
+        mx = lambda: l_item(bs, "아군X", L_ALLYX, vrep("루프i", V_LOOPI))
+        in_range = le(op("operator_subtract", vrep("검은킹X", V_ENKX), mx()), vrep("킹공성거리", V_SIEGE))
+        in_wall = le(op("operator_subtract", vrep("검은킹X", V_ENKX), mx()), vrep("킹공격거리", V_REACH))
         c_siege = bool_op("operator_or", in_range, in_wall)
+        set_tx = b_setvar(bs, "발사목표X", V_FTX, vrep("검은킹X", V_ENKX))
+        proj = emit_projectile(mx(), vrep("검은킹X", V_ENKX), 0)
         negd = op("operator_subtract", 0, vrep("계산뎀", V_CALCD))
         dec_en = b_changevar(bs, "검은킹체력", V_ENHP, negd)
         bc_hit = b_broadcast(bs, "검은킹피격", BR_ENHIT)
         pop_c = emit_popup(vrep("계산뎀", V_CALCD), vrep("검은킹X", V_ENKX), 0, 0)
-        C(bs, [dec_en, bc_hit, pop_c])
-        return [b_if(bs, c_siege, dec_en)]
+        C(bs, [set_tx] + proj + [dec_en, bc_hit, pop_c])
+        return [b_if(bs, c_siege, set_tx)]
 
-    def emit_king_siege_ally(R_id, R_nm):
-        dist = op("operator_subtract", l_item(bs, "적군X", L_ENX, vrep("루프i", V_LOOPI)), vrep("하얀킹X", V_MYKX))
-        in_range = le(dist, vrep(R_nm, R_id))
-        dist2 = op("operator_subtract", l_item(bs, "적군X", L_ENX, vrep("루프i", V_LOOPI)), vrep("하얀킹X", V_MYKX))
-        in_wall = le(dist2, vrep("킹공격거리", V_REACH))
+    def emit_king_siege_ally():
+        mx = lambda: l_item(bs, "적군X", L_ENX, vrep("루프i", V_LOOPI))
+        in_range = le(op("operator_subtract", mx(), vrep("하얀킹X", V_MYKX)), vrep("킹공성거리", V_SIEGE))
+        in_wall = le(op("operator_subtract", mx(), vrep("하얀킹X", V_MYKX)), vrep("킹공격거리", V_REACH))
         c_siege = bool_op("operator_or", in_range, in_wall)
+        set_tx = b_setvar(bs, "발사목표X", V_FTX, vrep("하얀킹X", V_MYKX))
+        proj = emit_projectile(mx(), vrep("하얀킹X", V_MYKX), 2)
         negd = op("operator_subtract", 0, vrep("계산뎀", V_CALCD))
         dec_my = b_changevar(bs, "하얀킹체력", V_MYHP, negd)
         bc_hit = b_broadcast(bs, "하얀킹피격", BR_MYHIT)
         pop_c = emit_popup(vrep("계산뎀", V_CALCD), vrep("하얀킹X", V_MYKX), 0, 0)
-        C(bs, [dec_my, bc_hit, pop_c])
-        return [b_if(bs, c_siege, dec_my)]
+        C(bs, [set_tx] + proj + [dec_my, bc_hit, pop_c])
+        return [b_if(bs, c_siege, set_tx)]
 
     # ── 아군 한 유닛 처리(전진 or 공격), 타입 분기 ──
     # mode: "single" | "aoe" | "dual"
-    def emit_ally_step(type_val, R_id, R_nm, SP_id, SP_nm, ATK_id, ATK_nm, CD_id, CD_nm, mode):
+    def emit_ally_step(type_val, R_id, R_nm, SP_id, SP_nm, ATK_id, ATK_nm, CD_id, CD_nm, mode, ranged):
         xi = l_item(bs, "아군X", L_ALLYX, vrep("루프i", V_LOOPI))
         diff = op("operator_subtract", vrep("적선두X", V_EFRONTX), xi)
         c_adv = cmp_op("operator_gt", diff, vrep(R_nm, R_id))
@@ -1194,17 +1233,23 @@ def build_manager_blocks():
         dmg = op("operator_multiply", vrep(ATK_nm, ATK_id), vrep("유닛공격력배수", V_ATKMUL))
         set_dmg = b_setvar(bs, "계산뎀", V_CALCD, dmg)
         fire_seq = [set_dmg]
+        myx_a = lambda: l_item(bs, "아군X", L_ALLYX, vrep("루프i", V_LOOPI))
         if mode == "single":
-            rnd = op("operator_random", 1, 8, key1="FROM", key2="TO")
-            c_clash = cmp_op("operator_equals", rnd, 1)
-            pcl = b_playsound(bs, "clash")
-            if_clash = b_if(bs, c_clash, pcl)
-            fire_seq += [if_clash] + emit_single_hit_enemy()
+            if ranged:   # 비숍: 최전방 적(적선두X)에게 화살 발사(시각) — '보이지 않는 공격' 해소
+                fire_seq += emit_projectile(myx_a(), vrep("적선두X", V_EFRONTX), 0)
+            else:        # 폰/나이트: 근접 clash
+                rnd = op("operator_random", 1, 8, key1="FROM", key2="TO")
+                pcl = b_playsound(bs, "clash")
+                fire_seq += [b_if(bs, cmp_op("operator_equals", rnd, 1), pcl)]
+            fire_seq += emit_single_hit_enemy()
         elif mode == "aoe":
+            fire_seq += emit_projectile(myx_a(), vrep("적선두X", V_EFRONTX), 1)   # 룩: 포탄
             fire_seq += emit_aoe_enemy(R_id, R_nm)
-        else:  # dual (퀸): 단일공격 + 광역공격을 한 쿨에 둘 다
+        else:  # dual (퀸): 화살+포탄, 단일공격 + 광역공격을 한 쿨에 둘 다
+            fire_seq += emit_projectile(myx_a(), vrep("적선두X", V_EFRONTX), 0)
+            fire_seq += emit_projectile(myx_a(), vrep("적선두X", V_EFRONTX), 1)
             fire_seq += emit_single_hit_enemy() + emit_aoe_enemy(R_id, R_nm)
-        fire_seq += emit_king_siege_enemy(R_id, R_nm)   # 전선 밀면 검은 킹 공성
+        fire_seq += emit_king_siege_enemy()   # 전선을 킹공성거리 안으로 밀면 검은 킹 공성
         reset_cd = l_replace(bs, "아군쿨", L_ALLYCD, vrep("루프i", V_LOOPI), vrep(CD_nm, CD_id))
         fire_seq += [reset_cd]
         C(bs, fire_seq)
@@ -1215,7 +1260,7 @@ def build_manager_blocks():
         return b_if(bs, c_type, ifelse)
 
     # ── 적 한 유닛 처리(왼쪽으로 전진 or 공격) ──
-    def emit_enemy_step(type_val, R_id, R_nm, SP_id, SP_nm, ATK_id, ATK_nm, CD_id, CD_nm, mode):
+    def emit_enemy_step(type_val, R_id, R_nm, SP_id, SP_nm, ATK_id, ATK_nm, CD_id, CD_nm, mode, ranged):
         xi = l_item(bs, "적군X", L_ENX, vrep("루프i", V_LOOPI))
         diff = op("operator_subtract", xi, vrep("아군선두X", V_AFRONTX))
         c_adv = cmp_op("operator_gt", diff, vrep(R_nm, R_id))
@@ -1235,13 +1280,19 @@ def build_manager_blocks():
         c_ready = le(cdr, 0)
         set_dmg = b_setvar(bs, "계산뎀", V_CALCD, vrep(ATK_nm, ATK_id))  # 적은 배수 없음
         fire_seq = [set_dmg]
+        myx_e = lambda: l_item(bs, "적군X", L_ENX, vrep("루프i", V_LOOPI))
         if mode == "single":
+            if ranged:
+                fire_seq += emit_projectile(myx_e(), vrep("아군선두X", V_AFRONTX), 2)
             fire_seq += emit_single_hit_ally()
         elif mode == "aoe":
+            fire_seq += emit_projectile(myx_e(), vrep("아군선두X", V_AFRONTX), 3)
             fire_seq += emit_aoe_ally(R_id, R_nm)
-        else:  # dual (검은퀸): 단일공격 + 광역공격을 한 쿨에 둘 다
+        else:  # dual (검은퀸)
+            fire_seq += emit_projectile(myx_e(), vrep("아군선두X", V_AFRONTX), 2)
+            fire_seq += emit_projectile(myx_e(), vrep("아군선두X", V_AFRONTX), 3)
             fire_seq += emit_single_hit_ally() + emit_aoe_ally(R_id, R_nm)
-        fire_seq += emit_king_siege_ally(R_id, R_nm)   # 전선 밀면 하얀 킹 공성
+        fire_seq += emit_king_siege_ally()   # 전선을 킹공성거리 안으로 밀면 하얀 킹 공성
         reset_cd = l_replace(bs, "적군쿨", L_ENCD, vrep("루프i", V_LOOPI), vrep(CD_nm, CD_id))
         fire_seq += [reset_cd]
         C(bs, fire_seq)
@@ -1296,11 +1347,11 @@ def build_manager_blocks():
     passB.append(b_setvar(bs, "루프i", V_LOOPI, 1))
     alive_bi = cmp_op("operator_equals", l_item(bs, "아군살아있음", L_ALLYAL, vrep("루프i", V_LOOPI)), 1)
     set_ct = b_setvar(bs, "계산타입", V_CALCT, l_item(bs, "아군타입", L_ALLYT, vrep("루프i", V_LOOPI)))
-    st1 = emit_ally_step(1, V_PWR, "폰_사거리", V_PWSP, "폰_속도", V_PWATK, "폰_공격력", V_PWCD, "폰_공속", "single")
-    st2 = emit_ally_step(2, V_BSR, "비숍_사거리", V_BSSP, "비숍_속도", V_BSATK, "비숍_공격력", V_BSCD, "비숍_공속", "single")
-    st3 = emit_ally_step(3, V_KNR, "나이트_사거리", V_KNSP, "나이트_속도", V_KNATK, "나이트_공격력", V_KNCD, "나이트_공속", "single")
-    st4 = emit_ally_step(4, V_RKR, "룩_사거리", V_RKSP, "룩_속도", V_RKATK, "룩_공격력", V_RKCD, "룩_공속", "aoe")
-    st5 = emit_ally_step(5, V_QNR, "퀸_사거리", V_QNSP, "퀸_속도", V_QNATK, "퀸_공격력", V_QNCD, "퀸_공속", "dual")
+    st1 = emit_ally_step(1, V_PWR, "폰_사거리", V_PWSP, "폰_속도", V_PWATK, "폰_공격력", V_PWCD, "폰_공속", "single", False)
+    st2 = emit_ally_step(2, V_BSR, "비숍_사거리", V_BSSP, "비숍_속도", V_BSATK, "비숍_공격력", V_BSCD, "비숍_공속", "single", True)
+    st3 = emit_ally_step(3, V_KNR, "나이트_사거리", V_KNSP, "나이트_속도", V_KNATK, "나이트_공격력", V_KNCD, "나이트_공속", "single", False)
+    st4 = emit_ally_step(4, V_RKR, "룩_사거리", V_RKSP, "룩_속도", V_RKATK, "룩_공격력", V_RKCD, "룩_공속", "aoe", True)
+    st5 = emit_ally_step(5, V_QNR, "퀸_사거리", V_QNSP, "퀸_속도", V_QNATK, "퀸_공격력", V_QNCD, "퀸_공속", "dual", True)
     C(bs, [set_ct, st1, st2, st3, st4, st5])
     if_bi = b_if(bs, alive_bi, set_ct)
     inc_bi = b_changevar(bs, "루프i", V_LOOPI, 1)
@@ -1313,11 +1364,11 @@ def build_manager_blocks():
     passC.append(b_setvar(bs, "루프i", V_LOOPI, 1))
     alive_ci = cmp_op("operator_equals", l_item(bs, "적군살아있음", L_ENAL, vrep("루프i", V_LOOPI)), 1)
     set_ct2 = b_setvar(bs, "계산타입", V_CALCT, l_item(bs, "적군타입", L_ENT, vrep("루프i", V_LOOPI)))
-    et1 = emit_enemy_step(1, V_EPR, "적폰_사거리", V_EPSP, "적폰_속도", V_EPATK, "적폰_공격력", V_EPCD, "적폰_공속", "single")
-    et2 = emit_enemy_step(2, V_EBR, "적비숍_사거리", V_EBSP, "적비숍_속도", V_EBATK, "적비숍_공격력", V_EBCD, "적비숍_공속", "single")
-    et3 = emit_enemy_step(3, V_ENKR, "적나이트_사거리", V_ENKSP, "적나이트_속도", V_ENKATK, "적나이트_공격력", V_ENKCD, "적나이트_공속", "single")
-    et4 = emit_enemy_step(4, V_ERR, "적룩_사거리", V_ERSP, "적룩_속도", V_ERATK, "적룩_공격력", V_ERCD, "적룩_공속", "aoe")
-    et5 = emit_enemy_step(5, V_EQR, "적퀸_사거리", V_EQSP, "적퀸_속도", V_EQATK, "적퀸_공격력", V_EQCD, "적퀸_공속", "dual")
+    et1 = emit_enemy_step(1, V_EPR, "적폰_사거리", V_EPSP, "적폰_속도", V_EPATK, "적폰_공격력", V_EPCD, "적폰_공속", "single", False)
+    et2 = emit_enemy_step(2, V_EBR, "적비숍_사거리", V_EBSP, "적비숍_속도", V_EBATK, "적비숍_공격력", V_EBCD, "적비숍_공속", "single", True)
+    et3 = emit_enemy_step(3, V_ENKR, "적나이트_사거리", V_ENKSP, "적나이트_속도", V_ENKATK, "적나이트_공격력", V_ENKCD, "적나이트_공속", "single", False)
+    et4 = emit_enemy_step(4, V_ERR, "적룩_사거리", V_ERSP, "적룩_속도", V_ERATK, "적룩_공격력", V_ERCD, "적룩_공속", "aoe", True)
+    et5 = emit_enemy_step(5, V_EQR, "적퀸_사거리", V_EQSP, "적퀸_속도", V_EQATK, "적퀸_공격력", V_EQCD, "적퀸_공속", "dual", True)
     C(bs, [set_ct2, et1, et2, et3, et4, et5])
     if_ci = b_if(bs, alive_ci, set_ct2)
     inc_ci = b_changevar(bs, "루프i", V_LOOPI, 1)
@@ -1916,6 +1967,56 @@ def build_overlay_blocks():
     return bs, comments
 
 # ============================================================
+#  투사체 (총알/포탄 — 시각 전용, 공격마다 발사자→타겟 비행 후 소멸)
+# ============================================================
+def build_projectile_blocks():
+    bs = {}
+    comments = {}
+    vrep, op, cmp_op, bool_op = make_helpers(bs)
+
+    h = gen(); bs[h] = mk("event_whenflagclicked", top=True, x=20, y=20)
+    hi = b_hide(bs); rs = b_norot(bs); orig0 = b_setvar(bs, "복제됨", V_PROJ_ISC, 0)
+    C(bs, [h, hi, rs, orig0])
+
+    hb = gen(); bs[hb] = mk("event_whenbroadcastreceived", top=True, x=20, y=200,
+        fields={"BROADCAST_OPTION": ["발사", BR_FIRE]})
+    c_orig = cmp_op("operator_equals", vrep("복제됨", V_PROJ_ISC), 0)
+    cc = b_createclone(bs)
+    if_c = b_if(bs, c_orig, cc)
+    C(bs, [hb, if_c])
+
+    ch = gen(); bs[ch] = mk("control_start_as_clone", top=True, x=20, y=380)
+    set1 = b_setvar(bs, "복제됨", V_PROJ_ISC, 1)
+    cap_sx = b_setvar(bs, "시작X", V_PROJ_SX, vrep("발사X", V_FX))
+    cap_tx = b_setvar(bs, "목표X", V_PROJ_TX, vrep("발사목표X", V_FTX))
+    cap_k = b_setvar(bs, "종류", V_PROJ_KIND, vrep("발사종류", V_FKIND))
+    cidx = op("operator_add", vrep("종류", V_PROJ_KIND), 1)
+    sw = gen(); bs[sw] = mk("looks_switchcostumeto", inputs={"COSTUME": slot(cidx)})
+    bs[cidx]["parent"] = sw
+    fr = b_front(bs)
+    yv = op("operator_add", vrep("레인Y", V_LANEY), 10)
+    g0 = b_gotoxy(bs, vrep("시작X", V_PROJ_SX), yv)
+    sh = b_show(bs); set_t0 = b_setvar(bs, "진행", V_PROJ_T, 0)
+    inc_t = b_changevar(bs, "진행", V_PROJ_T, 0.14)
+    span = op("operator_subtract", vrep("목표X", V_PROJ_TX), vrep("시작X", V_PROJ_SX))
+    prog = op("operator_multiply", span, vrep("진행", V_PROJ_T))
+    curx = op("operator_add", vrep("시작X", V_PROJ_SX), prog)
+    yv2 = op("operator_add", vrep("레인Y", V_LANEY), 10)
+    gmove = b_gotoxy(bs, curx, yv2)
+    w = b_wait(bs, 0.02)
+    C(bs, [inc_t, gmove, w])
+    rep = b_repeat(bs, 7, inc_t)
+    delc = b_delclone(bs)
+    C(bs, [ch, set1, cap_sx, cap_tx, cap_k, sw, fr, g0, sh, set_t0, rep, delc])
+
+    add_comment(bs, comments, ch,
+        "🏹 총알/포탄은 시각 전용이에요. 공격할 때 발사자 위치에서 클론이 생겨 타겟 X 로 "
+        "빠르게 날아가 사라져요(데미지는 매니저가 처리). 과부하 방지로 1/2 확률로만 나와요.",
+        x=460, y=380, w=340, h=140)
+
+    return bs, comments
+
+# ============================================================
 #  main
 # ============================================================
 def main():
@@ -1943,6 +2044,7 @@ def main():
     boom_md5 = save_svg(BOOM_SVG)
     bar_md5  = [save_svg(s) for s in BAR_SVGS]
     ov_md5   = [save_svg(s) for s in OVERLAY_SVGS]
+    proj_md5 = [save_svg(s) for s in PROJ_SVGS]
     card_md5 = save_svg(CARD_SVG)
     rs_md5   = save_svg(RESULT_SVG)
     inv_md5  = save_svg(INVIS_SVG)
@@ -1984,6 +2086,7 @@ def main():
     card_blocks, card_cmt = build_card_blocks()
     go_blocks, go_cmt = build_gameover_blocks()
     ov_blocks, ov_cmt = build_overlay_blocks()
+    proj_blocks, proj_cmt = build_projectile_blocks()
 
     stage = {
         "isStage": True, "name": "Stage",
@@ -2035,6 +2138,7 @@ def main():
             V_DMGDIG: ["데미지숫자", 0], V_DMGOFF: ["데미지오프셋", 0], V_DMGLEN: ["데미지글자수", 0], V_DMGPOS: ["데미지자리", 0],
             V_REUSE: ["재사용슬롯", 0], V_LOOPK: ["루프k", 0], V_OVCOUNT: ["오버레이카운터", 0], V_SPAWNHP: ["스폰체력", 0],
             V_UNITS: ["유닛", "0/12"],
+            V_FX: ["발사X", 0], V_FTX: ["발사목표X", 0], V_FKIND: ["발사종류", 0], V_SIEGE: ["킹공성거리", 300],
         },
         "lists": {
             L_ALLYX: ["아군X", []], L_ALLYHP: ["아군HP", []], L_ALLYT: ["아군타입", []],
@@ -2045,7 +2149,7 @@ def main():
         "broadcasts": {
             BR_START: "게임시작", BR_STAGEGO: "스테이지시작", BR_ALLY: "아군소환", BR_ENEMY: "적소환",
             BR_DMG: "데미지표시", BR_MYHIT: "하얀킹피격", BR_ENHIT: "검은킹피격", BR_CLEAR: "스테이지클리어",
-            BR_UPDONE: "강화완료", BR_OVER: "게임오버",
+            BR_UPDONE: "강화완료", BR_OVER: "게임오버", BR_FIRE: "발사",
         },
         "blocks": stage_blocks, "comments": stage_cmt,
         "currentCostume": 0,
@@ -2192,6 +2296,21 @@ def main():
         "draggable": False, "rotationStyle": "don't rotate"
     }
 
+    projectile = {
+        "isStage": False, "name": "투사체",
+        "variables": {V_PROJ_ISC: ["복제됨", 0], V_PROJ_KIND: ["종류", 0],
+                      V_PROJ_SX: ["시작X", 0], V_PROJ_TX: ["목표X", 0], V_PROJ_T: ["진행", 0]},
+        "lists": {}, "broadcasts": {},
+        "blocks": proj_blocks, "comments": proj_cmt,
+        "currentCostume": 0,
+        "costumes": [cos("아군화살", proj_md5[0], 12, 6), cos("아군포탄", proj_md5[1], 9, 9),
+                     cos("적화살", proj_md5[2], 12, 6), cos("적포탄", proj_md5[3], 9, 9)],
+        "sounds": [],
+        "volume": 100, "layerOrder": 7, "visible": False,
+        "x": 0, "y": 0, "size": 100, "direction": 90,
+        "draggable": False, "rotationStyle": "don't rotate"
+    }
+
     monitors = [
         {"id": V_MYHP, "mode": "default", "opcode": "data_variable",
          "params": {"VARIABLE": "하얀킹체력"}, "spriteName": None,
@@ -2217,7 +2336,7 @@ def main():
     ]
 
     project = {
-        "targets": [stage, myking, enking, manager, ally, enemy, button, popup, card, gameover, overlay],
+        "targets": [stage, myking, enking, manager, ally, enemy, button, popup, card, gameover, overlay, projectile],
         "monitors": monitors, "extensions": [],
         "meta": {"semver": "3.0.0", "vm": "13.7.4-svg", "agent": "chess-war-builder"}
     }
@@ -2237,7 +2356,7 @@ def main():
     for nm, b in [("stage", stage_blocks), ("하얀킹", myk_blocks), ("검은킹", enk_blocks),
                   ("전투매니저", mgr_blocks), ("아군유닛", ally_blocks), ("적군유닛", enemy_blocks),
                   ("소환버튼", btn_blocks), ("숫자팝업", pop_blocks), ("강화카드", card_blocks),
-                  ("게임오버", go_blocks), ("쿨오버레이", ov_blocks)]:
+                  ("게임오버", go_blocks), ("쿨오버레이", ov_blocks), ("투사체", proj_blocks)]:
         print(f"  {nm:10s}: {len(b)} blocks")
 
 if __name__ == "__main__":
