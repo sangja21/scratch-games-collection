@@ -518,6 +518,7 @@ V_DMGVAL = "varDmgVal117"; V_DMGX = "varDmgX118"; V_DMGY = "varDmgY119"; V_DMGKI
 V_DMGDIG = "varDmgDigit121"; V_DMGOFF = "varDmgOff122"; V_DMGLEN = "varDmgLen123"; V_DMGPOS = "varDmgPos124"
 # ----- 5.2b 진행 추가(플레이테스트 패치): 슬롯 재사용(메모리 상한)·오버레이 슬롯배정·스폰체력 채널 -----
 V_REUSE = "varReuse125"; V_LOOPK = "varLoopK126"; V_OVCOUNT = "varOvCount127"; V_SPAWNHP = "varSpawnHP128"
+V_UNITS = "varUnitsShown129"   # 화면 표시용 "아군수/최대유닛수" (모니터)
 
 # ----- 5.3 리스트 (10) -----
 L_ALLYX = "listAllyX"; L_ALLYHP = "listAllyHP"; L_ALLYT = "listAllyT"
@@ -793,8 +794,8 @@ def build_stage_blocks():
         sid = b_setvar(bs, name, vid, rep); seq.append(sid)
 
     # ── 튜닝 84 (개조 손잡이) ──
-    add_set("시작골드", V_STARTGOLD, 200); add_set("초당골드", V_GOLDRATE, 8)
-    add_set("처치골드", V_KILLGOLD, 2); add_set("스테이지클리어골드", V_CLEARGOLD, 50)
+    add_set("시작골드", V_STARTGOLD, 200); add_set("초당골드", V_GOLDRATE, 14)
+    add_set("처치골드", V_KILLGOLD, 3); add_set("스테이지클리어골드", V_CLEARGOLD, 50)
     add_set("폰코스트", V_COSTPW, 18); add_set("비숍코스트", V_COSTBS, 30)
     add_set("나이트코스트", V_COSTKN, 45); add_set("룩코스트", V_COSTRK, 70); add_set("퀸코스트", V_COSTQN, 110)
     add_set("최대유닛수", V_MAXALLY, 12); add_set("적최대유닛수", V_MAXENEMY, 12)
@@ -804,27 +805,27 @@ def build_stage_blocks():
     add_set("시뮬틱", V_TICK, 0.02); add_set("킹공격거리", V_REACH, 40)
     add_set("레인Y", V_LANEY, -50); add_set("하얀킹X", V_MYKX, -200); add_set("검은킹X", V_ENKX, 200)
     # 아군 스탯
-    add_set("폰_체력", V_PWHP, 12); add_set("폰_공격력", V_PWATK, 4); add_set("폰_공속", V_PWCD, 0.6)
-    add_set("폰_속도", V_PWSP, 4.0); add_set("폰_사거리", V_PWR, 30); add_set("폰_소환쿨", V_PWSUM, 0.35)
-    add_set("비숍_체력", V_BSHP, 8); add_set("비숍_공격력", V_BSATK, 5); add_set("비숍_공속", V_BSCD, 0.8)
-    add_set("비숍_속도", V_BSSP, 3.0); add_set("비숍_사거리", V_BSR, 105); add_set("비숍_소환쿨", V_BSSUM, 0.6)
-    add_set("나이트_체력", V_KNHP, 22); add_set("나이트_공격력", V_KNATK, 9); add_set("나이트_공속", V_KNCD, 0.7)
-    add_set("나이트_속도", V_KNSP, 4.5); add_set("나이트_사거리", V_KNR, 34); add_set("나이트_소환쿨", V_KNSUM, 0.9)
-    add_set("룩_체력", V_RKHP, 16); add_set("룩_공격력", V_RKATK, 6); add_set("룩_공속", V_RKCD, 1.4)
-    add_set("룩_속도", V_RKSP, 1.8); add_set("룩_사거리", V_RKR, 130); add_set("룩_소환쿨", V_RKSUM, 1.3)
-    add_set("퀸_체력", V_QNHP, 30); add_set("퀸_공격력", V_QNATK, 7); add_set("퀸_공속", V_QNCD, 1.2)
-    add_set("퀸_속도", V_QNSP, 2.3); add_set("퀸_사거리", V_QNR, 120); add_set("퀸_소환쿨", V_QNSUM, 1.8)
+    add_set("폰_체력", V_PWHP, 12); add_set("폰_공격력", V_PWATK, 6); add_set("폰_공속", V_PWCD, 0.4)
+    add_set("폰_속도", V_PWSP, 5.5); add_set("폰_사거리", V_PWR, 30); add_set("폰_소환쿨", V_PWSUM, 0.3)
+    add_set("비숍_체력", V_BSHP, 8); add_set("비숍_공격력", V_BSATK, 7); add_set("비숍_공속", V_BSCD, 0.5)
+    add_set("비숍_속도", V_BSSP, 3.5); add_set("비숍_사거리", V_BSR, 380); add_set("비숍_소환쿨", V_BSSUM, 0.45)
+    add_set("나이트_체력", V_KNHP, 22); add_set("나이트_공격력", V_KNATK, 13); add_set("나이트_공속", V_KNCD, 0.45)
+    add_set("나이트_속도", V_KNSP, 6.0); add_set("나이트_사거리", V_KNR, 34); add_set("나이트_소환쿨", V_KNSUM, 0.6)
+    add_set("룩_체력", V_RKHP, 16); add_set("룩_공격력", V_RKATK, 8); add_set("룩_공속", V_RKCD, 0.9)
+    add_set("룩_속도", V_RKSP, 2.6); add_set("룩_사거리", V_RKR, 400); add_set("룩_소환쿨", V_RKSUM, 0.9)
+    add_set("퀸_체력", V_QNHP, 30); add_set("퀸_공격력", V_QNATK, 9); add_set("퀸_공속", V_QNCD, 0.7)
+    add_set("퀸_속도", V_QNSP, 3.2); add_set("퀸_사거리", V_QNR, 390); add_set("퀸_소환쿨", V_QNSUM, 1.2)
     # 적 스탯
-    add_set("적폰_체력", V_EPHP, 10); add_set("적폰_공격력", V_EPATK, 3); add_set("적폰_공속", V_EPCD, 0.7)
-    add_set("적폰_속도", V_EPSP, 3.5); add_set("적폰_사거리", V_EPR, 30)
-    add_set("적비숍_체력", V_EBHP, 7); add_set("적비숍_공격력", V_EBATK, 4); add_set("적비숍_공속", V_EBCD, 0.9)
-    add_set("적비숍_속도", V_EBSP, 2.8); add_set("적비숍_사거리", V_EBR, 100)
-    add_set("적나이트_체력", V_ENKHP, 20); add_set("적나이트_공격력", V_ENKATK, 8); add_set("적나이트_공속", V_ENKCD, 0.8)
-    add_set("적나이트_속도", V_ENKSP, 4.0); add_set("적나이트_사거리", V_ENKR, 34)
-    add_set("적룩_체력", V_ERHP, 15); add_set("적룩_공격력", V_ERATK, 5); add_set("적룩_공속", V_ERCD, 1.4)
-    add_set("적룩_속도", V_ERSP, 1.6); add_set("적룩_사거리", V_ERR, 120)
-    add_set("적퀸_체력", V_EQHP, 40); add_set("적퀸_공격력", V_EQATK, 7); add_set("적퀸_공속", V_EQCD, 1.2)
-    add_set("적퀸_속도", V_EQSP, 2.1); add_set("적퀸_사거리", V_EQR, 115)
+    add_set("적폰_체력", V_EPHP, 8); add_set("적폰_공격력", V_EPATK, 3); add_set("적폰_공속", V_EPCD, 0.5)
+    add_set("적폰_속도", V_EPSP, 5.0); add_set("적폰_사거리", V_EPR, 30)
+    add_set("적비숍_체력", V_EBHP, 6); add_set("적비숍_공격력", V_EBATK, 4); add_set("적비숍_공속", V_EBCD, 0.6)
+    add_set("적비숍_속도", V_EBSP, 3.3); add_set("적비숍_사거리", V_EBR, 360)
+    add_set("적나이트_체력", V_ENKHP, 16); add_set("적나이트_공격력", V_ENKATK, 8); add_set("적나이트_공속", V_ENKCD, 0.5)
+    add_set("적나이트_속도", V_ENKSP, 5.5); add_set("적나이트_사거리", V_ENKR, 34)
+    add_set("적룩_체력", V_ERHP, 12); add_set("적룩_공격력", V_ERATK, 5); add_set("적룩_공속", V_ERCD, 0.9)
+    add_set("적룩_속도", V_ERSP, 2.4); add_set("적룩_사거리", V_ERR, 380)
+    add_set("적퀸_체력", V_EQHP, 32); add_set("적퀸_공격력", V_EQATK, 7); add_set("적퀸_공속", V_EQCD, 0.7)
+    add_set("적퀸_속도", V_EQSP, 3.0); add_set("적퀸_사거리", V_EQR, 370)
     # 스폰/강화
     add_set("적소환간격", V_SPGAP, 2.2); add_set("적소환간격감소", V_SPDEC, 0.12); add_set("적소환최소간격", V_SPMIN, 0.7)
     add_set("강화골드증가", V_UPGOLD, 3); add_set("강화공격배수", V_UPATK, 1.15)
@@ -858,6 +859,7 @@ def build_stage_blocks():
     # 진행 추가(패치): 슬롯 재사용·오버레이 슬롯배정·스폰체력 채널
     add_set("재사용슬롯", V_REUSE, 0); add_set("루프k", V_LOOPK, 0)
     add_set("오버레이카운터", V_OVCOUNT, 0); add_set("스폰체력", V_SPAWNHP, 0)
+    add_set("유닛", V_UNITS, "0/12")   # 화면 표시용 n/최대 (매니저가 매 틱 갱신)
 
     # ── 유닛 리스트 통째 비우기 ──
     for nm, lid in [("아군X", L_ALLYX), ("아군HP", L_ALLYHP), ("아군타입", L_ALLYT),
@@ -1140,6 +1142,35 @@ def build_manager_blocks():
         if_king = b_if(bs, c_king, dec_my)
         return [pc, set_j, rep, if_king]
 
+    # ── 킹 공성(siege): 상대 킹이 내 사거리(원거리) 또는 킹공격거리(근접이 성벽 도달) 안이면
+    #    매 공격마다 상대 킹 체력도 계산뎀만큼 깎는다. 전선을 앞으로 밀면 킹이 함락된다.
+    #    (이게 없으면 적이 계속 스폰돼 킹 앞을 가려서 스테이지가 안 끝남 — 플레이테스트 실측 버그.)
+    def emit_king_siege_enemy(R_id, R_nm):
+        dist = op("operator_subtract", vrep("검은킹X", V_ENKX), l_item(bs, "아군X", L_ALLYX, vrep("루프i", V_LOOPI)))
+        in_range = le(dist, vrep(R_nm, R_id))
+        dist2 = op("operator_subtract", vrep("검은킹X", V_ENKX), l_item(bs, "아군X", L_ALLYX, vrep("루프i", V_LOOPI)))
+        in_wall = le(dist2, vrep("킹공격거리", V_REACH))
+        c_siege = bool_op("operator_or", in_range, in_wall)
+        negd = op("operator_subtract", 0, vrep("계산뎀", V_CALCD))
+        dec_en = b_changevar(bs, "검은킹체력", V_ENHP, negd)
+        bc_hit = b_broadcast(bs, "검은킹피격", BR_ENHIT)
+        pop_c = emit_popup(vrep("계산뎀", V_CALCD), vrep("검은킹X", V_ENKX), 0, 0)
+        C(bs, [dec_en, bc_hit, pop_c])
+        return [b_if(bs, c_siege, dec_en)]
+
+    def emit_king_siege_ally(R_id, R_nm):
+        dist = op("operator_subtract", l_item(bs, "적군X", L_ENX, vrep("루프i", V_LOOPI)), vrep("하얀킹X", V_MYKX))
+        in_range = le(dist, vrep(R_nm, R_id))
+        dist2 = op("operator_subtract", l_item(bs, "적군X", L_ENX, vrep("루프i", V_LOOPI)), vrep("하얀킹X", V_MYKX))
+        in_wall = le(dist2, vrep("킹공격거리", V_REACH))
+        c_siege = bool_op("operator_or", in_range, in_wall)
+        negd = op("operator_subtract", 0, vrep("계산뎀", V_CALCD))
+        dec_my = b_changevar(bs, "하얀킹체력", V_MYHP, negd)
+        bc_hit = b_broadcast(bs, "하얀킹피격", BR_MYHIT)
+        pop_c = emit_popup(vrep("계산뎀", V_CALCD), vrep("하얀킹X", V_MYKX), 0, 0)
+        C(bs, [dec_my, bc_hit, pop_c])
+        return [b_if(bs, c_siege, dec_my)]
+
     # ── 아군 한 유닛 처리(전진 or 공격), 타입 분기 ──
     # mode: "single" | "aoe" | "dual"
     def emit_ally_step(type_val, R_id, R_nm, SP_id, SP_nm, ATK_id, ATK_nm, CD_id, CD_nm, mode):
@@ -1173,6 +1204,7 @@ def build_manager_blocks():
             fire_seq += emit_aoe_enemy(R_id, R_nm)
         else:  # dual (퀸): 단일공격 + 광역공격을 한 쿨에 둘 다
             fire_seq += emit_single_hit_enemy() + emit_aoe_enemy(R_id, R_nm)
+        fire_seq += emit_king_siege_enemy(R_id, R_nm)   # 전선 밀면 검은 킹 공성
         reset_cd = l_replace(bs, "아군쿨", L_ALLYCD, vrep("루프i", V_LOOPI), vrep(CD_nm, CD_id))
         fire_seq += [reset_cd]
         C(bs, fire_seq)
@@ -1209,6 +1241,7 @@ def build_manager_blocks():
             fire_seq += emit_aoe_ally(R_id, R_nm)
         else:  # dual (검은퀸): 단일공격 + 광역공격을 한 쿨에 둘 다
             fire_seq += emit_single_hit_ally() + emit_aoe_ally(R_id, R_nm)
+        fire_seq += emit_king_siege_ally(R_id, R_nm)   # 전선 밀면 하얀 킹 공성
         reset_cd = l_replace(bs, "적군쿨", L_ENCD, vrep("루프i", V_LOOPI), vrep(CD_nm, CD_id))
         fire_seq += [reset_cd]
         C(bs, fire_seq)
@@ -1608,8 +1641,17 @@ def build_button_blocks():
     wu = b_waituntil(bs, b_not(bs, b_mousedown(bs)))
     C(bs, [if_x1, wu])
     if_poll = b_if(bs, c_poll, if_x1)
+    # ── 화면 표시용 유닛 = join(아군수, "/", 최대유닛수) (n/12) ──
+    inner = gen(); bs[inner] = mk("operator_join",
+        inputs={"STRING1": [1, [10, "/"]], "STRING2": slot(vrep("최대유닛수", V_MAXALLY))})
+    bs[bs[inner]["inputs"]["STRING2"][1]]["parent"] = inner
+    outer = gen(); bs[outer] = mk("operator_join",
+        inputs={"STRING1": slot(vrep("아군수", V_ALLYN)), "STRING2": slot(inner)})
+    bs[bs[outer]["inputs"]["STRING1"][1]]["parent"] = outer
+    bs[inner]["parent"] = outer
+    set_units = b_setvar(bs, "유닛", V_UNITS, outer)
     w = b_wait(bs, 0.02)
-    C(bs, [if_cost, d1, d2, d3, d4, d5, if_poll, w])
+    C(bs, [if_cost, d1, d2, d3, d4, d5, set_units, if_poll, w])
     fe = b_forever(bs, if_cost)
     C(bs, [hb, fe])
 
@@ -1947,7 +1989,7 @@ def main():
         "isStage": True, "name": "Stage",
         "variables": {
             # 튜닝 84
-            V_STARTGOLD: ["시작골드", 200], V_GOLDRATE: ["초당골드", 8], V_KILLGOLD: ["처치골드", 2],
+            V_STARTGOLD: ["시작골드", 200], V_GOLDRATE: ["초당골드", 14], V_KILLGOLD: ["처치골드", 3],
             V_CLEARGOLD: ["스테이지클리어골드", 50], V_COSTPW: ["폰코스트", 18], V_COSTBS: ["비숍코스트", 30],
             V_COSTKN: ["나이트코스트", 45], V_COSTRK: ["룩코스트", 70], V_COSTQN: ["퀸코스트", 110],
             V_MAXALLY: ["최대유닛수", 12], V_MAXENEMY: ["적최대유닛수", 12], V_KINGMAX: ["하얀킹최대체력", 100],
@@ -1955,26 +1997,26 @@ def main():
             V_UNLKRK: ["룩해금스테이지", 3], V_UNLKQN: ["퀸해금스테이지", 4],
             V_TICK: ["시뮬틱", 0.02], V_REACH: ["킹공격거리", 40], V_LANEY: ["레인Y", -50],
             V_MYKX: ["하얀킹X", -200], V_ENKX: ["검은킹X", 200],
-            V_PWHP: ["폰_체력", 12], V_PWATK: ["폰_공격력", 4], V_PWCD: ["폰_공속", 0.6],
-            V_PWSP: ["폰_속도", 4.0], V_PWR: ["폰_사거리", 30], V_PWSUM: ["폰_소환쿨", 0.35],
-            V_BSHP: ["비숍_체력", 8], V_BSATK: ["비숍_공격력", 5], V_BSCD: ["비숍_공속", 0.8],
-            V_BSSP: ["비숍_속도", 3.0], V_BSR: ["비숍_사거리", 105], V_BSSUM: ["비숍_소환쿨", 0.6],
-            V_KNHP: ["나이트_체력", 22], V_KNATK: ["나이트_공격력", 9], V_KNCD: ["나이트_공속", 0.7],
-            V_KNSP: ["나이트_속도", 4.5], V_KNR: ["나이트_사거리", 34], V_KNSUM: ["나이트_소환쿨", 0.9],
-            V_RKHP: ["룩_체력", 16], V_RKATK: ["룩_공격력", 6], V_RKCD: ["룩_공속", 1.4],
-            V_RKSP: ["룩_속도", 1.8], V_RKR: ["룩_사거리", 130], V_RKSUM: ["룩_소환쿨", 1.3],
-            V_QNHP: ["퀸_체력", 30], V_QNATK: ["퀸_공격력", 7], V_QNCD: ["퀸_공속", 1.2],
-            V_QNSP: ["퀸_속도", 2.3], V_QNR: ["퀸_사거리", 120], V_QNSUM: ["퀸_소환쿨", 1.8],
-            V_EPHP: ["적폰_체력", 10], V_EPATK: ["적폰_공격력", 3], V_EPCD: ["적폰_공속", 0.7],
-            V_EPSP: ["적폰_속도", 3.5], V_EPR: ["적폰_사거리", 30],
-            V_EBHP: ["적비숍_체력", 7], V_EBATK: ["적비숍_공격력", 4], V_EBCD: ["적비숍_공속", 0.9],
-            V_EBSP: ["적비숍_속도", 2.8], V_EBR: ["적비숍_사거리", 100],
-            V_ENKHP: ["적나이트_체력", 20], V_ENKATK: ["적나이트_공격력", 8], V_ENKCD: ["적나이트_공속", 0.8],
-            V_ENKSP: ["적나이트_속도", 4.0], V_ENKR: ["적나이트_사거리", 34],
-            V_ERHP: ["적룩_체력", 15], V_ERATK: ["적룩_공격력", 5], V_ERCD: ["적룩_공속", 1.4],
-            V_ERSP: ["적룩_속도", 1.6], V_ERR: ["적룩_사거리", 120],
-            V_EQHP: ["적퀸_체력", 40], V_EQATK: ["적퀸_공격력", 7], V_EQCD: ["적퀸_공속", 1.2],
-            V_EQSP: ["적퀸_속도", 2.1], V_EQR: ["적퀸_사거리", 115],
+            V_PWHP: ["폰_체력", 12], V_PWATK: ["폰_공격력", 6], V_PWCD: ["폰_공속", 0.4],
+            V_PWSP: ["폰_속도", 5.5], V_PWR: ["폰_사거리", 30], V_PWSUM: ["폰_소환쿨", 0.3],
+            V_BSHP: ["비숍_체력", 8], V_BSATK: ["비숍_공격력", 7], V_BSCD: ["비숍_공속", 0.5],
+            V_BSSP: ["비숍_속도", 3.5], V_BSR: ["비숍_사거리", 380], V_BSSUM: ["비숍_소환쿨", 0.45],
+            V_KNHP: ["나이트_체력", 22], V_KNATK: ["나이트_공격력", 13], V_KNCD: ["나이트_공속", 0.45],
+            V_KNSP: ["나이트_속도", 6.0], V_KNR: ["나이트_사거리", 34], V_KNSUM: ["나이트_소환쿨", 0.6],
+            V_RKHP: ["룩_체력", 16], V_RKATK: ["룩_공격력", 8], V_RKCD: ["룩_공속", 0.9],
+            V_RKSP: ["룩_속도", 2.6], V_RKR: ["룩_사거리", 400], V_RKSUM: ["룩_소환쿨", 0.9],
+            V_QNHP: ["퀸_체력", 30], V_QNATK: ["퀸_공격력", 9], V_QNCD: ["퀸_공속", 0.7],
+            V_QNSP: ["퀸_속도", 3.2], V_QNR: ["퀸_사거리", 390], V_QNSUM: ["퀸_소환쿨", 1.2],
+            V_EPHP: ["적폰_체력", 8], V_EPATK: ["적폰_공격력", 3], V_EPCD: ["적폰_공속", 0.5],
+            V_EPSP: ["적폰_속도", 5.0], V_EPR: ["적폰_사거리", 30],
+            V_EBHP: ["적비숍_체력", 6], V_EBATK: ["적비숍_공격력", 4], V_EBCD: ["적비숍_공속", 0.6],
+            V_EBSP: ["적비숍_속도", 3.3], V_EBR: ["적비숍_사거리", 360],
+            V_ENKHP: ["적나이트_체력", 16], V_ENKATK: ["적나이트_공격력", 8], V_ENKCD: ["적나이트_공속", 0.5],
+            V_ENKSP: ["적나이트_속도", 5.5], V_ENKR: ["적나이트_사거리", 34],
+            V_ERHP: ["적룩_체력", 12], V_ERATK: ["적룩_공격력", 5], V_ERCD: ["적룩_공속", 0.9],
+            V_ERSP: ["적룩_속도", 2.4], V_ERR: ["적룩_사거리", 380],
+            V_EQHP: ["적퀸_체력", 32], V_EQATK: ["적퀸_공격력", 7], V_EQCD: ["적퀸_공속", 0.7],
+            V_EQSP: ["적퀸_속도", 3.0], V_EQR: ["적퀸_사거리", 370],
             V_SPGAP: ["적소환간격", 2.2], V_SPDEC: ["적소환간격감소", 0.12], V_SPMIN: ["적소환최소간격", 0.7],
             V_UPGOLD: ["강화골드증가", 3], V_UPATK: ["강화공격배수", 1.15], V_UPHP: ["강화체력배수", 1.15],
             V_UPREPAIR: ["강화킹수리", 40],
@@ -1992,6 +2034,7 @@ def main():
             V_DMGVAL: ["데미지표시값", 0], V_DMGX: ["데미지표시x", 0], V_DMGY: ["데미지표시y", 0], V_DMGKIND: ["팝업종류", 0],
             V_DMGDIG: ["데미지숫자", 0], V_DMGOFF: ["데미지오프셋", 0], V_DMGLEN: ["데미지글자수", 0], V_DMGPOS: ["데미지자리", 0],
             V_REUSE: ["재사용슬롯", 0], V_LOOPK: ["루프k", 0], V_OVCOUNT: ["오버레이카운터", 0], V_SPAWNHP: ["스폰체력", 0],
+            V_UNITS: ["유닛", "0/12"],
         },
         "lists": {
             L_ALLYX: ["아군X", []], L_ALLYHP: ["아군HP", []], L_ALLYT: ["아군타입", []],
@@ -2166,6 +2209,11 @@ def main():
          "params": {"VARIABLE": "검은킹체력"}, "spriteName": None,
          "value": 120, "width": 0, "height": 0, "x": 5, "y": 95,
          "visible": True, "sliderMin": 0, "sliderMax": 999, "isDiscrete": True},
+        # 유닛 n/12 — 소환 버튼 바(하단) 근처에 배치
+        {"id": V_UNITS, "mode": "default", "opcode": "data_variable",
+         "params": {"VARIABLE": "유닛"}, "spriteName": None,
+         "value": "0/12", "width": 0, "height": 0, "x": 195, "y": 295,
+         "visible": True, "sliderMin": 0, "sliderMax": 100, "isDiscrete": True},
     ]
 
     project = {

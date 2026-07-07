@@ -53,16 +53,22 @@ function setMouse(sx, sy, isDown) {
         v.유닛공격력배수==1 && v.유닛체력배수==1 && v.나이트해금==0 && v.룩해금==0 && v.퀸해금==0);
   check('아군 리스트 비어있음(소환 전)', (listVal('아군X')||[]).length===0);
   const gv = Object.keys(v).length;
-  check('전역 변수 128개 (방송 10개 제외; 패치 +4)', gv === 128, `count=${gv}`);
-  // 패치 #1(속도↑·틱↓) · #4(유닛상한↓)
-  check('패치 #1: 시뮬틱=0.02 (틱 빨라짐), 폰_속도=4.0 (약 2배)', Number(v.시뮬틱)===0.02 && Number(v.폰_속도)===4.0,
-        `시뮬틱=${v.시뮬틱} 폰_속도=${v.폰_속도}`);
-  check('패치 #1: 유닛 속도 전반 상향(나이트4.5·룩1.8·퀸2.3·적폰3.5)',
-        Number(v.나이트_속도)===4.5 && Number(v.룩_속도)===1.8 && Number(v.퀸_속도)===2.3 && Number(v.적폰_속도)===3.5);
-  check('패치 #4: 최대유닛수=12, 적최대유닛수=12', Number(v.최대유닛수)===12 && Number(v.적최대유닛수)===12,
-        `아군=${v.최대유닛수} 적=${v.적최대유닛수}`);
-  check('쿨오버레이 스프라이트 존재 + 코스튬 4(재충전/골드/가득참/잠금)',
-        !!orig('쿨오버레이') && orig('쿨오버레이').getCostumes().length===4);
+  check('전역 변수 129개 (방송 10개 제외; 유닛표시 +1)', gv === 129, `count=${gv}`);
+  // 2차 패치 #2(템포↑): 속도·공격력↑, 공속·적체력↓
+  check('템포: 폰_속도 5.5, 나이트_속도 6.0, 적폰_속도 5.0 (횡단 빠르게)',
+        Number(v.폰_속도)===5.5 && Number(v.나이트_속도)===6.0 && Number(v.적폰_속도)===5.0,
+        `폰${v.폰_속도} 나${v.나이트_속도} 적폰${v.적폰_속도}`);
+  check('템포: 폰_공격력 6·공속 0.4 → 검은폰(체력8) 2타 결판', Number(v.폰_공격력)===6 && Number(v.폰_공속)===0.4 && Number(v.적폰_체력)===8,
+        `폰뎀${v.폰_공격력} 폰공속${v.폰_공속} 적폰HP${v.적폰_체력}`);
+  check('템포: 초당골드 8→14, 처치골드 2→3 (경제 비례 상향)', Number(v.초당골드)===14 && Number(v.처치골드)===3);
+  // 2차 패치 #1(비숍 버그): 원거리 사거리 대폭 상향(뒤에서 사격)
+  check('비숍 버그 수정: 원거리 사거리 필드횡단(비숍380·룩400·퀸390) → 후방 아티'+'\n'+'(적선두 사격 + 킹 공성으로 스테이지 클리어 가능)',
+        Number(v.비숍_사거리)===380 && Number(v.룩_사거리)===400 && Number(v.퀸_사거리)===390,
+        `비숍${v.비숍_사거리} 룩${v.룩_사거리} 퀸${v.퀸_사거리}`);
+  check('유닛 상한=12, 시뮬틱=0.02', Number(v.최대유닛수)===12 && Number(v.적최대유닛수)===12 && Number(v.시뮬틱)===0.02);
+  check('쿨오버레이 스프라이트 존재 + 코스튬 4', !!orig('쿨오버레이') && orig('쿨오버레이').getCostumes().length===4);
+  // 2차 패치 #3: n/12 유닛 표시 변수
+  check('유닛 표시 변수 초기 "0/12"', String(v.유닛)==='0/12', `유닛=${v.유닛}`);
 
   // ---- (2) enemy spawner ----
   console.log('--- (2) 적 스포너 (리스트 append · 적군수++ · 렌더 클론) ---');
@@ -73,8 +79,8 @@ function setMouse(sx, sy, isDown) {
   check('적군수 >= 1', Number(v.적군수) >= 1, `적군수=${v.적군수}`);
   check('적군유닛 렌더 클론 스폰됨', clones('적군유닛').length >= 1, `clones=${clones('적군유닛').length}`);
   const enT = listVal('적군타입'), enHP = listVal('적군HP');
-  check('스테이지1 적=검은폰(타입1), 적군HP=10×적배율(1)',
-        (enT||[]).every(t=>Number(t)===1) && (enT||[]).every((t,i)=>Math.abs(Number(enHP[i])-10)<1e-6),
+  check('스테이지1 적=검은폰(타입1), 적군HP=적폰_체력(8)×적배율(1)',
+        (enT||[]).every(t=>Number(t)===1) && (enT||[]).every((t,i)=>Math.abs(Number(enHP[i])-8)<1e-6),
         `types=${JSON.stringify(enT)} hp=${JSON.stringify(enHP)}`);
 
   // ---- (3) 적 전진 → 하얀킹 피격 ----
@@ -105,6 +111,69 @@ function setMouse(sx, sy, isDown) {
         Number((listVal('아군살아있음')||[]).slice(-1)[0])===1);
   check('아군유닛 렌더 클론 등장', clones('아군유닛').length >= 1, `clones=${clones('아군유닛').length}`);
   check('오버레이 클론 5기(버튼 5칸 상태)', clones('쿨오버레이').length === 5, `clones=${clones('쿨오버레이').length}`);
+  // n/12 라이브 갱신(방금 폰 1기 소환 → "1/12")
+  await sleep(120);
+  check('유닛 표시 라이브 갱신: 아군수 1 → "1/12"', String(stageVars().유닛)==='1/12', `유닛=${stageVars().유닛}`);
+
+  // ---- (4bis) [버그 회귀] 뒤에 선 비숍/룩이 실제로 사격하는지 (혼성 시나리오) ----
+  console.log('--- (4bis) 원거리 유닛 후방 사격 (비숍/룩 버그 회귀) ---');
+  async function backlineFires(allyType, enemyMul, label) {
+    setVar('게임상태', 2); setVar('적최대유닛수', 0); await sleep(120);
+    for (const nm of ['적군X','적군HP','적군타입','적군살아있음','적군쿨','아군X','아군HP','아군타입','아군살아있음','아군쿨']) listVal(nm).length = 0;
+    setVar('유닛공격력배수', 1);
+    // 폰(앞, -100, melee) + 원거리유닛(뒤, -160) ; 적 2기(앞 -75, 뒤 -30) — 원거리 사거리 안
+    listVal('아군X').push(-100, -160); listVal('아군HP').push(9999, 9999); listVal('아군타입').push(1, allyType);
+    listVal('아군살아있음').push(1, 1); listVal('아군쿨').push(0, 0); setVar('아군수', 2);
+    listVal('적군X').push(-75, -30); listVal('적군HP').push(99999, 99999); listVal('적군타입').push(1, 1);
+    listVal('적군살아있음').push(1, 1); listVal('적군쿨').push(0, 0); setVar('적군수', 2);
+    setVar('폰_공격력', 0); // 폰 데미지 0 → 적 HP 감소는 오직 원거리 유닛 몫
+    const e0 = listVal('적군HP').map(Number);
+    setVar('게임상태', 1);
+    await sleep(900);
+    const e1 = listVal('적군HP').map(Number);
+    const dmg = (e0[0]-e1[0]) + (e0[1]-e1[1]);
+    check(`${label}: 폰 앞에 있어도 뒤의 원거리 유닛이 사격(데미지>0)`, dmg > 0, `총 데미지=${dmg}`);
+    setVar('폰_공격력', 6);
+  }
+  await backlineFires(2, 1, '비숍(뒤)');   // 타입2 비숍
+  await backlineFires(4, 1, '룩(뒤·광역)'); // 타입4 룩
+
+  // 적 검은비숍도 대칭으로 후방 사격하는지
+  console.log('--- (4bis-2) 검은비숍 후방 사격 (대칭) ---');
+  setVar('게임상태', 2); setVar('적최대유닛수', 0); await sleep(120);
+  for (const nm of ['적군X','적군HP','적군타입','적군살아있음','적군쿨','아군X','아군HP','아군타입','아군살아있음','아군쿨']) listVal(nm).length = 0;
+  // 검은폰(앞 100) + 검은비숍(뒤 160) ; 아군 2기(앞 75, 뒤 30) 검은비숍 사거리(190) 안
+  listVal('적군X').push(100, 160); listVal('적군HP').push(9999, 9999); listVal('적군타입').push(1, 2);
+  listVal('적군살아있음').push(1, 1); listVal('적군쿨').push(0, 0); setVar('적군수', 2);
+  listVal('아군X').push(75, 30); listVal('아군HP').push(99999, 99999); listVal('아군타입').push(1, 1);
+  listVal('아군살아있음').push(1, 1); listVal('아군쿨').push(0, 0); setVar('아군수', 2);
+  setVar('적폰_공격력', 0);
+  const a0 = listVal('아군HP').map(Number);
+  setVar('게임상태', 1);
+  await sleep(900);
+  const a1 = listVal('아군HP').map(Number);
+  const admg = (a0[0]-a1[0])+(a0[1]-a1[1]);
+  check('검은비숍(뒤)도 검은폰 앞에서 아군에게 사격(데미지>0)', admg > 0, `총 데미지=${admg}`);
+  setVar('적폰_공격력', 3); setVar('적최대유닛수', 12);
+
+  // ---- (4ter) 킹 공성: 적이 살아있어도 원거리 유닛이 검은 킹을 깎는다 (스테이지 클리어 가능성) ----
+  console.log('--- (4ter) 킹 공성 (적 존재해도 원거리가 킹 사격 → 클리어 가능) ---');
+  setVar('게임상태', 2); setVar('적최대유닛수', 0); await sleep(120);
+  for (const nm of ['적군X','적군HP','적군타입','적군살아있음','적군쿨','아군X','아군HP','아군타입','아군살아있음','아군쿨']) listVal(nm).length = 0;
+  setVar('검은킹체력', 500); setVar('유닛공격력배수', 1);
+  // 적 1기(살아있음=1, 적선두슬롯≠0 보장) + 아군 비숍 1기(필드 어디서든 킹 사거리 380 안)
+  listVal('적군X').push(-50); listVal('적군HP').push(99999); listVal('적군타입').push(1);
+  listVal('적군살아있음').push(1); listVal('적군쿨').push(0); setVar('적군수', 1);
+  listVal('아군X').push(-100); listVal('아군HP').push(9999); listVal('아군타입').push(2); // 비숍
+  listVal('아군살아있음').push(1); listVal('아군쿨').push(0); setVar('아군수', 1);
+  const enK0 = Number(stageVars().검은킹체력), enFrontSlot0 = Number(stageVars().적선두슬롯);
+  setVar('게임상태', 1);
+  await sleep(900);
+  const enK1 = Number(stageVars().검은킹체력);
+  check('적 유닛 살아있는데도(적선두슬롯≠0) 비숍이 검은 킹 공성', enK1 < enK0, `검은킹 ${enK0}→${enK1}`);
+  check('적선두슬롯≠0 유지(킹이 아니라 적을 최전방으로 잡음에도 킹 공성됨)', Number(stageVars().적선두슬롯) !== 0,
+        `적선두슬롯=${stageVars().적선두슬롯}`);
+  setVar('검은킹체력', 120); setVar('적최대유닛수', 12);
 
   // ---- (4b) 이동 속도(틱당 X 증가량) 상향 확인 ----
   console.log('--- (4b) 이동 속도(틱당 X 증가) ---');
@@ -251,7 +320,7 @@ function setMouse(sx, sy, isDown) {
   if (sawQueen) {
     const qi = types.indexOf(5);
     const eqHp = Number(listVal('적군HP')[qi]);
-    check('검은 퀸 HP = 적퀸_체력(40) × 적배율(2) = 80', Math.abs(eqHp - 80) < 1e-6, `HP=${eqHp}`);
+    check('검은 퀸 HP = 적퀸_체력(32) × 적배율(2) = 64', Math.abs(eqHp - 64) < 1e-6, `HP=${eqHp}`);
   }
 
   // ---- (6) 스테이지 클리어 → 강화 → 지수 스케일 ----
