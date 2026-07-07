@@ -53,7 +53,16 @@ function setMouse(sx, sy, isDown) {
         v.유닛공격력배수==1 && v.유닛체력배수==1 && v.나이트해금==0 && v.룩해금==0 && v.퀸해금==0);
   check('아군 리스트 비어있음(소환 전)', (listVal('아군X')||[]).length===0);
   const gv = Object.keys(v).length;
-  check('전역 변수 124개 (방송 10개 제외)', gv === 124, `count=${gv}`);
+  check('전역 변수 128개 (방송 10개 제외; 패치 +4)', gv === 128, `count=${gv}`);
+  // 패치 #1(속도↑·틱↓) · #4(유닛상한↓)
+  check('패치 #1: 시뮬틱=0.02 (틱 빨라짐), 폰_속도=4.0 (약 2배)', Number(v.시뮬틱)===0.02 && Number(v.폰_속도)===4.0,
+        `시뮬틱=${v.시뮬틱} 폰_속도=${v.폰_속도}`);
+  check('패치 #1: 유닛 속도 전반 상향(나이트4.5·룩1.8·퀸2.3·적폰3.5)',
+        Number(v.나이트_속도)===4.5 && Number(v.룩_속도)===1.8 && Number(v.퀸_속도)===2.3 && Number(v.적폰_속도)===3.5);
+  check('패치 #4: 최대유닛수=12, 적최대유닛수=12', Number(v.최대유닛수)===12 && Number(v.적최대유닛수)===12,
+        `아군=${v.최대유닛수} 적=${v.적최대유닛수}`);
+  check('쿨오버레이 스프라이트 존재 + 코스튬 4(재충전/골드/가득참/잠금)',
+        !!orig('쿨오버레이') && orig('쿨오버레이').getCostumes().length===4);
 
   // ---- (2) enemy spawner ----
   console.log('--- (2) 적 스포너 (리스트 append · 적군수++ · 렌더 클론) ---');
@@ -95,6 +104,69 @@ function setMouse(sx, sy, isDown) {
   check('아군타입 마지막=1(폰), 아군살아있음=1', Number((listVal('아군타입')||[]).slice(-1)[0])===1 &&
         Number((listVal('아군살아있음')||[]).slice(-1)[0])===1);
   check('아군유닛 렌더 클론 등장', clones('아군유닛').length >= 1, `clones=${clones('아군유닛').length}`);
+  check('오버레이 클론 5기(버튼 5칸 상태)', clones('쿨오버레이').length === 5, `clones=${clones('쿨오버레이').length}`);
+
+  // ---- (4b) 이동 속도(틱당 X 증가량) 상향 확인 ----
+  console.log('--- (4b) 이동 속도(틱당 X 증가) ---');
+  setVar('게임상태', 2); setVar('적최대유닛수', 0);
+  await sleep(150);
+  for (const nm of ['적군X','적군HP','적군타입','적군살아있음','적군쿨','아군X','아군HP','아군타입','아군살아있음','아군쿨']) { listVal(nm).length = 0; }
+  // 폰 1기, 적 선두 없음(적선두X=검은킹X=200) → 사거리 밖이라 매 틱 폰_속도(4.0)만큼 전진
+  listVal('아군X').push(-150); listVal('아군HP').push(12); listVal('아군타입').push(1);
+  listVal('아군살아있음').push(1); listVal('아군쿨').push(0); setVar('아군수', 1);
+  setVar('게임상태', 1);
+  const x0 = Number(listVal('아군X')[0]);
+  await sleep(300);   // ~15 틱(시뮬틱0.02, headless 빠름)
+  const x1 = Number(listVal('아군X')[0]);
+  const moved = x1 - x0;
+  check('폰이 오른쪽으로 실제 전진(틱당 폰_속도만큼 X 증가)', moved > 4, `X ${x0}→${x1} (Δ=${moved.toFixed(1)})`);
+
+  // ---- (4c) 유닛 상한 도달 → 소환 거부 ----
+  console.log('--- (4c) 유닛 상한 도달 시 소환 거부 ---');
+  setVar('게임상태', 2);
+  for (const nm of ['아군X','아군HP','아군타입','아군살아있음','아군쿨']) { listVal(nm).length = 0; }
+  setVar('최대유닛수', 12);
+  for (let i = 0; i < 12; i++) { listVal('아군X').push(-150); listVal('아군HP').push(12);
+    listVal('아군타입').push(1); listVal('아군살아있음').push(1); listVal('아군쿨').push(0); }
+  setVar('아군수', 12); setVar('골드', 999);
+  setVar('폰쿨타이머', 0); setVar('비숍쿨타이머', 0);
+  setVar('게임상태', 1);
+  const lenCap = listVal('아군X').length, anCap = Number(stageVars().아군수);
+  setMouse(-190, -150, true); await sleep(200); setMouse(-190, -150, false); await sleep(250);
+  check('아군수=최대유닛수(12) → 소환 거부(아군수 불변)', Number(stageVars().아군수) === anCap, `아군수 ${anCap}→${stageVars().아군수}`);
+  check('상한 도달 → 리스트 안 자람', listVal('아군X').length === lenCap, `len ${lenCap}→${listVal('아군X').length}`);
+
+  // ---- (4d) 쿨 중 소환 거부 + 버튼 상태(쿨타이머>0) ----
+  console.log('--- (4d) 쿨 중 소환 거부 ---');
+  setVar('게임상태', 2);
+  for (const nm of ['아군X','아군HP','아군타입','아군살아있음','아군쿨']) { listVal(nm).length = 0; }
+  setVar('아군수', 0); setVar('골드', 999); setVar('폰쿨타이머', 5); // 쿨 걸어둠
+  setVar('게임상태', 1);
+  const anCd = Number(stageVars().아군수);
+  setMouse(-190, -150, true); await sleep(200); setMouse(-190, -150, false); await sleep(250);
+  check('폰쿨타이머>0 → 폰 소환 거부(아군수 불변)', Number(stageVars().아군수) === anCd, `아군수 ${anCd}→${stageVars().아군수}`);
+  check('쿨 상태 변수(폰쿨타이머)가 버튼/오버레이가 읽는 채널로 살아있음(>0)', Number(stageVars().폰쿨타이머) > 0,
+        `폰쿨타이머=${Number(stageVars().폰쿨타이머).toFixed(2)}`);
+
+  // ---- (4e) 죽은 슬롯 재사용(메모리 상한: 리스트 무한 성장 방지) ----
+  console.log('--- (4e) 죽은 슬롯 재사용 (replace, 리스트 길이 유지) ---');
+  setVar('게임상태', 2);
+  for (const nm of ['아군X','아군HP','아군타입','아군살아있음','아군쿨']) { listVal(nm).length = 0; }
+  // 살아있는 폰 2기 + 죽은 슬롯 1기(중간)
+  listVal('아군X').push(-150,-120,-100);
+  listVal('아군HP').push(12,12,12);
+  listVal('아군타입').push(1,1,1);
+  listVal('아군살아있음').push(1,0,1);   // index2 죽음
+  listVal('아군쿨').push(0,0,0);
+  setVar('아군수', 2); setVar('골드', 999); setVar('폰쿨타이머', 0); setVar('최대유닛수', 12);
+  setVar('게임상태', 1);
+  const lenReuse = listVal('아군X').length;
+  setMouse(-190, -150, true); await sleep(200); setMouse(-190, -150, false); await sleep(250);
+  check('죽은 슬롯 재사용 → 리스트 길이 그대로(3, 무한 성장 X)', listVal('아군X').length === lenReuse,
+        `len ${lenReuse}→${listVal('아군X').length}`);
+  check('재사용 슬롯 되살아남(살아있음[2]=1)', Number(listVal('아군살아있음')[1]) === 1, `살아있음[2]=${listVal('아군살아있음')[1]}`);
+  check('아군수 재증가(2→3)', Number(stageVars().아군수) === 3, `아군수=${stageVars().아군수}`);
+  setVar('적최대유닛수', 12);
 
   // ---- (5) 전투: 아군이 적 처치 (통제된 1:1) ----
   console.log('--- (5) 전투 시뮬 (적 처치, 통제된 시나리오) ---');

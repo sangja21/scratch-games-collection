@@ -167,31 +167,32 @@ def _star_pts(cx, cy, R, r, n, rot=0.0):
         pts.append(f"{cx + rad*math.cos(ang):.1f},{cy + rad*math.sin(ang):.1f}")
     return " ".join(pts)
 
-# -------- 배경: 하늘 + 체스판 무늬 들판 + 레인선 (레인Y=-50 → svgY=230) --------
+# -------- 배경: 옅은 파스텔 하늘 + 워시톤 체스판 + 은은한 레인선 (레인Y=-50 → svgY=230) --------
+# 플레이테스트 #3: 배경 채도·명도를 크게 낮춰(파스텔/워시) 유닛·킹·버튼이 또렷하게 대비되도록.
 CHECKER = []
 for ti, ty in enumerate(range(200, 360, 26)):
     for tj, tx in enumerate(range(0, 480, 26)):
         light = (ti + tj) % 2 == 0
-        shade = "#D9C7A3" if light else "#7E6B4A"
+        shade = "#F1EBDD" if light else "#E1D8C4"   # 아주 옅은 크림/베이지(대비 최소)
         CHECKER.append(f'<rect x="{tx}" y="{ty}" width="26" height="26" fill="{shade}"/>')
 CHECKER_SVG = "\n    ".join(CHECKER)
 BG_SVG = f"""<svg xmlns="http://www.w3.org/2000/svg" width="480" height="360" viewBox="0 0 480 360">
   <defs>
     <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#8FB7DE"/>
-      <stop offset="1" stop-color="#CFE4F2"/>
+      <stop offset="0" stop-color="#DCEAF6"/>
+      <stop offset="1" stop-color="#EFF6FC"/>
     </linearGradient>
   </defs>
   <rect width="480" height="360" fill="url(#sky)"/>
-  <circle cx="70" cy="58" r="24" fill="#FFFFFF" opacity="0.85"/>
-  <circle cx="100" cy="64" r="20" fill="#FFFFFF" opacity="0.85"/>
-  <circle cx="398" cy="46" r="18" fill="#FFFFFF" opacity="0.8"/>
-  <rect x="0" y="200" width="480" height="160" fill="#8E7B58"/>
-  <g>
+  <circle cx="70" cy="58" r="24" fill="#FFFFFF" opacity="0.6"/>
+  <circle cx="100" cy="64" r="20" fill="#FFFFFF" opacity="0.6"/>
+  <circle cx="398" cy="46" r="18" fill="#FFFFFF" opacity="0.55"/>
+  <rect x="0" y="200" width="480" height="160" fill="#EAE2D0"/>
+  <g opacity="0.85">
     {CHECKER_SVG}
   </g>
-  <line x1="0" y1="230" x2="480" y2="230" stroke="#3E3320" stroke-width="3" opacity="0.5"/>
-  <rect x="4" y="4" width="472" height="352" rx="10" fill="none" stroke="#3E3320" stroke-width="5" opacity="0.45"/>
+  <line x1="0" y1="230" x2="480" y2="230" stroke="#B7A98A" stroke-width="2" opacity="0.35"/>
+  <rect x="4" y="4" width="472" height="352" rx="10" fill="none" stroke="#C7BDA4" stroke-width="4" opacity="0.35"/>
 </svg>"""
 
 # -------- 하얀 킹 (왕관·하얀 로브·검) --------
@@ -378,6 +379,21 @@ BAR_SVGS = [
     _bar_svg(True,  True,  True),    # 모두해금
 ]
 
+# -------- 버튼 상태 오버레이 (버튼 위에 겹치는 반투명 사각형; 쿨/골드부족/상한/잠금) --------
+# 플레이테스트 #2/#4: 소환 버튼별 재충전·골드부족·유닛상한·잠금 상태를 색으로 보여줌.
+# 90×44 둥근 사각(버튼과 동일). 클론이 각 버튼 위에 하나씩 떠서 매 틱 상태를 렌더.
+def _overlay_svg(fill, label):
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="90" height="44" viewBox="0 0 90 44">
+  <rect x="0" y="0" width="90" height="44" rx="7" fill="{fill}"/>
+  <text x="45" y="28" text-anchor="middle" font-family="Arial" font-size="11" font-weight="bold" fill="#FFFFFF" opacity="0.9">{label}</text>
+</svg>"""
+OVERLAY_SVGS = [
+    _overlay_svg("#1A237E", "재충전"),   # 0 쿨(파랑) — 고스트로 차오르는 게이지처럼 페이드
+    _overlay_svg("#616161", "골드"),     # 1 골드부족(회색)
+    _overlay_svg("#B71C1C", "가득참"),   # 2 유닛 상한(빨강)
+    _overlay_svg("#212121", ""),         # 3 잠금(어두움)
+]
+
 # -------- 강화카드 (4선택지) --------
 CARD_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="400" height="150" viewBox="0 0 400 150">
   <rect x="4" y="4" width="392" height="142" rx="14" fill="#1A237E" opacity="0.95" stroke="#FFD54F" stroke-width="4"/>
@@ -500,6 +516,8 @@ V_EFRONTX = "varEFrontX109"; V_EFRONTI = "varEFrontI110"; V_AFRONTX = "varAFront
 V_LOOPI = "varLoopI113"; V_LOOPJ = "varLoopJ114"; V_CALCT = "varCalcT115"; V_CALCD = "varCalcD116"
 V_DMGVAL = "varDmgVal117"; V_DMGX = "varDmgX118"; V_DMGY = "varDmgY119"; V_DMGKIND = "varDmgKind120"
 V_DMGDIG = "varDmgDigit121"; V_DMGOFF = "varDmgOff122"; V_DMGLEN = "varDmgLen123"; V_DMGPOS = "varDmgPos124"
+# ----- 5.2b 진행 추가(플레이테스트 패치): 슬롯 재사용(메모리 상한)·오버레이 슬롯배정·스폰체력 채널 -----
+V_REUSE = "varReuse125"; V_LOOPK = "varLoopK126"; V_OVCOUNT = "varOvCount127"; V_SPAWNHP = "varSpawnHP128"
 
 # ----- 5.3 리스트 (10) -----
 L_ALLYX = "listAllyX"; L_ALLYHP = "listAllyHP"; L_ALLYT = "listAllyT"
@@ -511,6 +529,7 @@ L_ENAL = "listEnAlive"; L_ENCD = "listEnCD"
 V_ALLY_ISC = "varAllyIsClone"; V_ALLY_SLOT = "varAllySlot"
 V_EN_ISC = "varEnIsClone"; V_EN_SLOT = "varEnSlot"
 V_POP_ISC = "varPopIsClone"
+V_OV_ISC = "varOvIsClone"; V_OV_SLOT = "varOvSlot"   # 쿨오버레이 클론-로컬
 
 # ----- 5.5 메시지 (10) -----
 BR_START = "brStart01"; BR_STAGEGO = "brStageGo02"; BR_ALLY = "brAlly03"; BR_ENEMY = "brEnemy04"
@@ -778,34 +797,34 @@ def build_stage_blocks():
     add_set("처치골드", V_KILLGOLD, 2); add_set("스테이지클리어골드", V_CLEARGOLD, 50)
     add_set("폰코스트", V_COSTPW, 18); add_set("비숍코스트", V_COSTBS, 30)
     add_set("나이트코스트", V_COSTKN, 45); add_set("룩코스트", V_COSTRK, 70); add_set("퀸코스트", V_COSTQN, 110)
-    add_set("최대유닛수", V_MAXALLY, 16); add_set("적최대유닛수", V_MAXENEMY, 16)
+    add_set("최대유닛수", V_MAXALLY, 12); add_set("적최대유닛수", V_MAXENEMY, 12)
     add_set("하얀킹최대체력", V_KINGMAX, 100); add_set("검은킹기본체력", V_ENKINGBASE, 120)
     add_set("적성장배율", V_SCALE, 1.25); add_set("나이트해금스테이지", V_UNLKKN, 2)
     add_set("룩해금스테이지", V_UNLKRK, 3); add_set("퀸해금스테이지", V_UNLKQN, 4)
-    add_set("시뮬틱", V_TICK, 0.03); add_set("킹공격거리", V_REACH, 40)
+    add_set("시뮬틱", V_TICK, 0.02); add_set("킹공격거리", V_REACH, 40)
     add_set("레인Y", V_LANEY, -50); add_set("하얀킹X", V_MYKX, -200); add_set("검은킹X", V_ENKX, 200)
     # 아군 스탯
     add_set("폰_체력", V_PWHP, 12); add_set("폰_공격력", V_PWATK, 4); add_set("폰_공속", V_PWCD, 0.6)
-    add_set("폰_속도", V_PWSP, 2.3); add_set("폰_사거리", V_PWR, 30); add_set("폰_소환쿨", V_PWSUM, 0.35)
+    add_set("폰_속도", V_PWSP, 4.0); add_set("폰_사거리", V_PWR, 30); add_set("폰_소환쿨", V_PWSUM, 0.35)
     add_set("비숍_체력", V_BSHP, 8); add_set("비숍_공격력", V_BSATK, 5); add_set("비숍_공속", V_BSCD, 0.8)
-    add_set("비숍_속도", V_BSSP, 1.7); add_set("비숍_사거리", V_BSR, 105); add_set("비숍_소환쿨", V_BSSUM, 0.6)
+    add_set("비숍_속도", V_BSSP, 3.0); add_set("비숍_사거리", V_BSR, 105); add_set("비숍_소환쿨", V_BSSUM, 0.6)
     add_set("나이트_체력", V_KNHP, 22); add_set("나이트_공격력", V_KNATK, 9); add_set("나이트_공속", V_KNCD, 0.7)
-    add_set("나이트_속도", V_KNSP, 2.6); add_set("나이트_사거리", V_KNR, 34); add_set("나이트_소환쿨", V_KNSUM, 0.9)
+    add_set("나이트_속도", V_KNSP, 4.5); add_set("나이트_사거리", V_KNR, 34); add_set("나이트_소환쿨", V_KNSUM, 0.9)
     add_set("룩_체력", V_RKHP, 16); add_set("룩_공격력", V_RKATK, 6); add_set("룩_공속", V_RKCD, 1.4)
-    add_set("룩_속도", V_RKSP, 1.0); add_set("룩_사거리", V_RKR, 130); add_set("룩_소환쿨", V_RKSUM, 1.3)
+    add_set("룩_속도", V_RKSP, 1.8); add_set("룩_사거리", V_RKR, 130); add_set("룩_소환쿨", V_RKSUM, 1.3)
     add_set("퀸_체력", V_QNHP, 30); add_set("퀸_공격력", V_QNATK, 7); add_set("퀸_공속", V_QNCD, 1.2)
-    add_set("퀸_속도", V_QNSP, 1.3); add_set("퀸_사거리", V_QNR, 120); add_set("퀸_소환쿨", V_QNSUM, 1.8)
+    add_set("퀸_속도", V_QNSP, 2.3); add_set("퀸_사거리", V_QNR, 120); add_set("퀸_소환쿨", V_QNSUM, 1.8)
     # 적 스탯
     add_set("적폰_체력", V_EPHP, 10); add_set("적폰_공격력", V_EPATK, 3); add_set("적폰_공속", V_EPCD, 0.7)
-    add_set("적폰_속도", V_EPSP, 2.0); add_set("적폰_사거리", V_EPR, 30)
+    add_set("적폰_속도", V_EPSP, 3.5); add_set("적폰_사거리", V_EPR, 30)
     add_set("적비숍_체력", V_EBHP, 7); add_set("적비숍_공격력", V_EBATK, 4); add_set("적비숍_공속", V_EBCD, 0.9)
-    add_set("적비숍_속도", V_EBSP, 1.6); add_set("적비숍_사거리", V_EBR, 100)
+    add_set("적비숍_속도", V_EBSP, 2.8); add_set("적비숍_사거리", V_EBR, 100)
     add_set("적나이트_체력", V_ENKHP, 20); add_set("적나이트_공격력", V_ENKATK, 8); add_set("적나이트_공속", V_ENKCD, 0.8)
-    add_set("적나이트_속도", V_ENKSP, 2.3); add_set("적나이트_사거리", V_ENKR, 34)
+    add_set("적나이트_속도", V_ENKSP, 4.0); add_set("적나이트_사거리", V_ENKR, 34)
     add_set("적룩_체력", V_ERHP, 15); add_set("적룩_공격력", V_ERATK, 5); add_set("적룩_공속", V_ERCD, 1.4)
-    add_set("적룩_속도", V_ERSP, 0.9); add_set("적룩_사거리", V_ERR, 120)
+    add_set("적룩_속도", V_ERSP, 1.6); add_set("적룩_사거리", V_ERR, 120)
     add_set("적퀸_체력", V_EQHP, 40); add_set("적퀸_공격력", V_EQATK, 7); add_set("적퀸_공속", V_EQCD, 1.2)
-    add_set("적퀸_속도", V_EQSP, 1.2); add_set("적퀸_사거리", V_EQR, 115)
+    add_set("적퀸_속도", V_EQSP, 2.1); add_set("적퀸_사거리", V_EQR, 115)
     # 스폰/강화
     add_set("적소환간격", V_SPGAP, 2.2); add_set("적소환간격감소", V_SPDEC, 0.12); add_set("적소환최소간격", V_SPMIN, 0.7)
     add_set("강화골드증가", V_UPGOLD, 3); add_set("강화공격배수", V_UPATK, 1.15)
@@ -836,6 +855,9 @@ def build_stage_blocks():
     add_set("데미지표시y", V_DMGY, 0); add_set("팝업종류", V_DMGKIND, 0)
     add_set("데미지숫자", V_DMGDIG, 0); add_set("데미지오프셋", V_DMGOFF, 0)
     add_set("데미지글자수", V_DMGLEN, 0); add_set("데미지자리", V_DMGPOS, 0)
+    # 진행 추가(패치): 슬롯 재사용·오버레이 슬롯배정·스폰체력 채널
+    add_set("재사용슬롯", V_REUSE, 0); add_set("루프k", V_LOOPK, 0)
+    add_set("오버레이카운터", V_OVCOUNT, 0); add_set("스폰체력", V_SPAWNHP, 0)
 
     # ── 유닛 리스트 통째 비우기 ──
     for nm, lid in [("아군X", L_ALLYX), ("아군HP", L_ALLYHP), ("아군타입", L_ALLYT),
@@ -1321,22 +1343,46 @@ def build_manager_blocks():
     if_s5 = b_ifelse(bs, c_s5, set_t3, if_boss)
     if_s3 = b_ifelse(bs, c_s3, set_t2, if_s5)
     if_s1 = b_ifelse(bs, c_s1, set_t1, if_s3)
-    # append
-    a_x = l_add(bs, "적군X", L_ENX, vrep("검은킹X", V_ENKX))
-    def hp_add(hp_id, hp_nm):
+    # ── 스폰체력 = 체력(타입) × 적배율 (5-branch로 set; reuse/append 공용) ──
+    def hp_set(hp_id, hp_nm):
         base = vrep(hp_nm, hp_id)
         prod = op("operator_multiply", base, vrep("적배율", V_SCALECUR))
-        return l_add(bs, "적군HP", L_ENHP, prod)
-    ha1 = hp_add(V_EPHP, "적폰_체력"); ha2 = hp_add(V_EBHP, "적비숍_체력")
-    ha3 = hp_add(V_ENKHP, "적나이트_체력"); ha4 = hp_add(V_ERHP, "적룩_체력"); ha5 = hp_add(V_EQHP, "적퀸_체력")
-    if_h4 = b_ifelse(bs, cmp_op("operator_equals", vrep("적생성타입", V_ENSPAWNT), 4), ha4, ha5)
-    if_h3 = b_ifelse(bs, cmp_op("operator_equals", vrep("적생성타입", V_ENSPAWNT), 3), ha3, if_h4)
-    if_h2 = b_ifelse(bs, cmp_op("operator_equals", vrep("적생성타입", V_ENSPAWNT), 2), ha2, if_h3)
-    if_h1 = b_ifelse(bs, cmp_op("operator_equals", vrep("적생성타입", V_ENSPAWNT), 1), ha1, if_h2)
+        return b_setvar(bs, "스폰체력", V_SPAWNHP, prod)
+    hs1 = hp_set(V_EPHP, "적폰_체력"); hs2 = hp_set(V_EBHP, "적비숍_체력")
+    hs3 = hp_set(V_ENKHP, "적나이트_체력"); hs4 = hp_set(V_ERHP, "적룩_체력"); hs5 = hp_set(V_EQHP, "적퀸_체력")
+    if_h4 = b_ifelse(bs, cmp_op("operator_equals", vrep("적생성타입", V_ENSPAWNT), 4), hs4, hs5)
+    if_h3 = b_ifelse(bs, cmp_op("operator_equals", vrep("적생성타입", V_ENSPAWNT), 3), hs3, if_h4)
+    if_h2 = b_ifelse(bs, cmp_op("operator_equals", vrep("적생성타입", V_ENSPAWNT), 2), hs2, if_h3)
+    if_h1 = b_ifelse(bs, cmp_op("operator_equals", vrep("적생성타입", V_ENSPAWNT), 1), hs1, if_h2)
+    # ── 죽은 적 슬롯 찾기(replace 만; 리스트 무한 성장 방지) ──
+    set_reuse0 = b_setvar(bs, "재사용슬롯", V_REUSE, 0)
+    set_k1 = b_setvar(bs, "루프k", V_LOOPK, 1)
+    none_yet = cmp_op("operator_equals", vrep("재사용슬롯", V_REUSE), 0)
+    dead_k = cmp_op("operator_equals", l_item(bs, "적군살아있음", L_ENAL, vrep("루프k", V_LOOPK)), 0)
+    c_reuse = bool_op("operator_and", none_yet, dead_k)
+    set_reuse_k = b_setvar(bs, "재사용슬롯", V_REUSE, vrep("루프k", V_LOOPK))
+    if_reuse = b_if(bs, c_reuse, set_reuse_k)
+    inc_k = b_changevar(bs, "루프k", V_LOOPK, 1)
+    C(bs, [if_reuse, inc_k])
+    rep_find = b_repeat(bs, l_length(bs, "적군X", L_ENX), if_reuse)
+    # reuse 브랜치
+    r_x = l_replace(bs, "적군X", L_ENX, vrep("재사용슬롯", V_REUSE), vrep("검은킹X", V_ENKX))
+    r_hp = l_replace(bs, "적군HP", L_ENHP, vrep("재사용슬롯", V_REUSE), vrep("스폰체력", V_SPAWNHP))
+    r_t = l_replace(bs, "적군타입", L_ENT, vrep("재사용슬롯", V_REUSE), vrep("적생성타입", V_ENSPAWNT))
+    r_al = l_replace(bs, "적군살아있음", L_ENAL, vrep("재사용슬롯", V_REUSE), 1)
+    r_cd = l_replace(bs, "적군쿨", L_ENCD, vrep("재사용슬롯", V_REUSE), 0)
+    r_slot = b_setvar(bs, "새적슬롯", V_NEWENEMY, vrep("재사용슬롯", V_REUSE))
+    C(bs, [r_x, r_hp, r_t, r_al, r_cd, r_slot])
+    # append 브랜치
+    a_x = l_add(bs, "적군X", L_ENX, vrep("검은킹X", V_ENKX))
+    a_hp = l_add(bs, "적군HP", L_ENHP, vrep("스폰체력", V_SPAWNHP))
     a_t = l_add(bs, "적군타입", L_ENT, vrep("적생성타입", V_ENSPAWNT))
     a_al = l_add(bs, "적군살아있음", L_ENAL, 1)
     a_cd = l_add(bs, "적군쿨", L_ENCD, 0)
-    set_slot = b_setvar(bs, "새적슬롯", V_NEWENEMY, l_length(bs, "적군X", L_ENX))
+    a_slot = b_setvar(bs, "새적슬롯", V_NEWENEMY, l_length(bs, "적군X", L_ENX))
+    C(bs, [a_x, a_hp, a_t, a_al, a_cd, a_slot])
+    c_haveslot = cmp_op("operator_gt", vrep("재사용슬롯", V_REUSE), 0)
+    if_place = b_ifelse(bs, c_haveslot, r_x, a_x)
     inc_n = b_changevar(bs, "적군수", V_ENEMYN, 1)
     bc_en = b_broadcast_wait(bs, "적소환", BR_ENEMY)
     dec_amt = op("operator_multiply", op("operator_subtract", vrep("스테이지", V_STAGE), 1), vrep("적소환간격감소", V_SPDEC))
@@ -1345,7 +1391,7 @@ def build_manager_blocks():
     c_min = cmp_op("operator_lt", vrep("적소환타이머", V_ENSPTIMER), vrep("적소환최소간격", V_SPMIN))
     set_min = b_setvar(bs, "적소환타이머", V_ENSPTIMER, vrep("적소환최소간격", V_SPMIN))
     if_min = b_if(bs, c_min, set_min)
-    C(bs, [if_s1, a_x, if_h1, a_t, a_al, a_cd, set_slot, inc_n, bc_en, set_timer, if_min])
+    C(bs, [if_s1, if_h1, set_reuse0, set_k1, rep_find, if_place, inc_n, bc_en, set_timer, if_min])
     if_spawn = b_if(bs, c_spawn, if_s1)
     C(bs, [dec_timer, if_spawn])
     st_sp = vrep("게임상태", V_STATE); c_play_sp = cmp_op("operator_equals", st_sp, 1)
@@ -1474,19 +1520,43 @@ def build_button_blocks():
             cond = bool_op("operator_and", base2, unlock_ok)
         negc = op("operator_subtract", 0, vrep(cost_nm, cost_id))
         dec_g = b_changevar(bs, "골드", V_GOLD, negc)
+        # ── 죽은 슬롯 찾기(메모리 상한: 리스트 무한 성장 방지 — replace 만 사용, 인덱스 불변) ──
+        set_reuse0 = b_setvar(bs, "재사용슬롯", V_REUSE, 0)
+        set_k1 = b_setvar(bs, "루프k", V_LOOPK, 1)
+        none_yet = cmp_op("operator_equals", vrep("재사용슬롯", V_REUSE), 0)
+        dead_k = cmp_op("operator_equals", l_item(bs, "아군살아있음", L_ALLYAL, vrep("루프k", V_LOOPK)), 0)
+        c_reuse = bool_op("operator_and", none_yet, dead_k)
+        set_reuse_k = b_setvar(bs, "재사용슬롯", V_REUSE, vrep("루프k", V_LOOPK))
+        if_reuse = b_if(bs, c_reuse, set_reuse_k)
+        inc_k = b_changevar(bs, "루프k", V_LOOPK, 1)
+        C(bs, [if_reuse, inc_k])
+        rep_find = b_repeat(bs, l_length(bs, "아군X", L_ALLYX), if_reuse)
+        # reuse 브랜치: replace 5리스트
+        hp_expr_r = op("operator_multiply", vrep(hp_nm, hp_id), vrep("유닛체력배수", V_HPMUL))
+        r_x = l_replace(bs, "아군X", L_ALLYX, vrep("재사용슬롯", V_REUSE), op("operator_add", vrep("하얀킹X", V_MYKX), 25))
+        r_hp = l_replace(bs, "아군HP", L_ALLYHP, vrep("재사용슬롯", V_REUSE), hp_expr_r)
+        r_t = l_replace(bs, "아군타입", L_ALLYT, vrep("재사용슬롯", V_REUSE), type_val)
+        r_al = l_replace(bs, "아군살아있음", L_ALLYAL, vrep("재사용슬롯", V_REUSE), 1)
+        r_cd = l_replace(bs, "아군쿨", L_ALLYCD, vrep("재사용슬롯", V_REUSE), 0)
+        r_slot = b_setvar(bs, "새아군슬롯", V_NEWALLY, vrep("재사용슬롯", V_REUSE))
+        C(bs, [r_x, r_hp, r_t, r_al, r_cd, r_slot])
+        # append 브랜치: add 5리스트
+        hp_expr_a = op("operator_multiply", vrep(hp_nm, hp_id), vrep("유닛체력배수", V_HPMUL))
         a_x = l_add(bs, "아군X", L_ALLYX, op("operator_add", vrep("하얀킹X", V_MYKX), 25))
-        hp_expr = op("operator_multiply", vrep(hp_nm, hp_id), vrep("유닛체력배수", V_HPMUL))
-        a_hp = l_add(bs, "아군HP", L_ALLYHP, hp_expr)
+        a_hp = l_add(bs, "아군HP", L_ALLYHP, hp_expr_a)
         a_t = l_add(bs, "아군타입", L_ALLYT, type_val)
         a_al = l_add(bs, "아군살아있음", L_ALLYAL, 1)
         a_cd = l_add(bs, "아군쿨", L_ALLYCD, 0)
+        a_slot = b_setvar(bs, "새아군슬롯", V_NEWALLY, l_length(bs, "아군X", L_ALLYX))
+        C(bs, [a_x, a_hp, a_t, a_al, a_cd, a_slot])
+        c_haveslot = cmp_op("operator_gt", vrep("재사용슬롯", V_REUSE), 0)
+        if_place = b_ifelse(bs, c_haveslot, r_x, a_x)
         set_type = b_setvar(bs, "소환타입", V_SUMTYPE, type_val)
-        set_slot = b_setvar(bs, "새아군슬롯", V_NEWALLY, l_length(bs, "아군X", L_ALLYX))
         inc_n = b_changevar(bs, "아군수", V_ALLYN, 1)
         sh_s, sp_s = b_sound(bs, pitch, "summon")
         bc = b_broadcast_wait(bs, "아군소환", BR_ALLY)
         set_cd = b_setvar(bs, cdt_nm, cdt_id, vrep(sum_nm, sum_id))
-        C(bs, [dec_g, a_x, a_hp, a_t, a_al, a_cd, set_type, set_slot, inc_n, sh_s, sp_s, bc, set_cd])
+        C(bs, [dec_g, set_reuse0, set_k1, rep_find, if_place, set_type, inc_n, sh_s, sp_s, bc, set_cd])
         eh, ep = b_sound(bs, 0, "error")
         return b_ifelse(bs, cond, dec_g, eh)
 
@@ -1710,6 +1780,100 @@ def build_gameover_blocks():
     return bs, comments
 
 # ============================================================
+#  쿨오버레이 (버튼 상태: 재충전/골드부족/상한/잠금 — 버튼 위 반투명 클론 5기)
+# ============================================================
+def build_overlay_blocks():
+    bs = {}
+    comments = {}
+    vrep, op, cmp_op, bool_op = make_helpers(bs)
+
+    def seteffect_r(eff, valexpr):
+        bid = gen()
+        ins = {"VALUE": slot(valexpr) if (isinstance(valexpr, str) and valexpr in bs) else num(valexpr)}
+        bs[bid] = mk("looks_seteffectto", inputs=ins, fields={"EFFECT": [eff, None]})
+        if isinstance(valexpr, str) and valexpr in bs: bs[valexpr]["parent"] = bid
+        return bid
+
+    # 한 슬롯의 상태 결정 체인(head 반환). unlock_id None = 항상 해금(폰/비숍).
+    def emit_state(cool_id, cool_nm, cost_id, cost_nm, sum_id, sum_nm, unlock_id, unlock_nm):
+        # cooldown 브랜치
+        cd_gt0 = cmp_op("operator_gt", vrep(cool_nm, cool_id), 0)
+        sw_cd = b_costume(bs, "재충전")
+        ratio = op("operator_divide", vrep(cool_nm, cool_id), vrep(sum_nm, sum_id))
+        ratio100 = op("operator_multiply", ratio, 100)
+        gh = op("operator_subtract", 100, ratio100)
+        set_gh = seteffect_r("GHOST", gh)
+        sh_cd = b_show(bs)
+        C(bs, [sw_cd, set_gh, sh_cd])
+        # cap 브랜치
+        cap = b_not(bs, cmp_op("operator_lt", vrep("아군수", V_ALLYN), vrep("최대유닛수", V_MAXALLY)))
+        sw_cap = b_costume(bs, "가득참"); gh_cap = b_seteffect(bs, "GHOST", 20); sh_cap = b_show(bs)
+        C(bs, [sw_cap, gh_cap, sh_cap])
+        # gold 브랜치
+        gold_low = cmp_op("operator_lt", vrep("골드", V_GOLD), vrep(cost_nm, cost_id))
+        sw_gd = b_costume(bs, "골드"); gh_gd = b_seteffect(bs, "GHOST", 35); sh_gd = b_show(bs)
+        C(bs, [sw_gd, gh_gd, sh_gd])
+        hide_ready = b_hide(bs)
+        if_gold = b_ifelse(bs, gold_low, sw_gd, hide_ready)
+        if_cap = b_ifelse(bs, cap, sw_cap, if_gold)
+        if_cd = b_ifelse(bs, cd_gt0, sw_cd, if_cap)
+        if unlock_id is None:
+            return if_cd
+        # locked 브랜치(가장 바깥)
+        locked = cmp_op("operator_equals", vrep(unlock_nm, unlock_id), 0)
+        sw_lk = b_costume(bs, "잠금"); gh_lk = b_seteffect(bs, "GHOST", 25); sh_lk = b_show(bs)
+        C(bs, [sw_lk, gh_lk, sh_lk])
+        return b_ifelse(bs, locked, sw_lk, if_cd)
+
+    # (A) 깃발
+    h = gen(); bs[h] = mk("event_whenflagclicked", top=True, x=20, y=20)
+    hi = b_hide(bs); rs = b_norot(bs); orig0 = b_setvar(bs, "복제됨", V_OV_ISC, 0)
+    C(bs, [h, hi, rs, orig0])
+
+    # (B) 게임시작 → 원본이 5기 클론(오버레이카운터로 슬롯 배정)
+    hb = gen(); bs[hb] = mk("event_whenbroadcastreceived", top=True, x=20, y=200,
+        fields={"BROADCAST_OPTION": ["게임시작", BR_START]})
+    c_orig = cmp_op("operator_equals", vrep("복제됨", V_OV_ISC), 0)
+    set_cnt0 = b_setvar(bs, "오버레이카운터", V_OVCOUNT, 0)
+    cc = b_createclone(bs)
+    rep5 = b_repeat(bs, 5, cc)
+    C(bs, [set_cnt0, rep5])
+    if_spawn = b_if(bs, c_orig, set_cnt0)
+    C(bs, [hb, if_spawn])
+
+    # (C) 클론 본체
+    ch = gen(); bs[ch] = mk("control_start_as_clone", top=True, x=20, y=380)
+    set1 = b_setvar(bs, "복제됨", V_OV_ISC, 1)
+    inc_cnt = b_changevar(bs, "오버레이카운터", V_OVCOUNT, 1)
+    set_slot = b_setvar(bs, "슬롯", V_OV_SLOT, vrep("오버레이카운터", V_OVCOUNT))
+    fr = b_front(bs)
+    # goto ((슬롯-3)*96, -150)
+    bx = op("operator_multiply", op("operator_subtract", vrep("슬롯", V_OV_SLOT), 3), 96)
+    g = b_gotoxy(bs, bx, -150)
+    sz = b_setsize(bs, 100)
+    # forever: 슬롯별 상태 렌더
+    s1 = emit_state(V_SUMT1, "폰쿨타이머", V_COSTPW, "폰코스트", V_PWSUM, "폰_소환쿨", None, None)
+    s2 = emit_state(V_SUMT2, "비숍쿨타이머", V_COSTBS, "비숍코스트", V_BSSUM, "비숍_소환쿨", None, None)
+    s3 = emit_state(V_SUMT3, "나이트쿨타이머", V_COSTKN, "나이트코스트", V_KNSUM, "나이트_소환쿨", V_UNKN, "나이트해금")
+    s4 = emit_state(V_SUMT4, "룩쿨타이머", V_COSTRK, "룩코스트", V_RKSUM, "룩_소환쿨", V_UNRK, "룩해금")
+    s5 = emit_state(V_SUMT5, "퀸쿨타이머", V_COSTQN, "퀸코스트", V_QNSUM, "퀸_소환쿨", V_UNQN, "퀸해금")
+    if_b4 = b_ifelse(bs, cmp_op("operator_equals", vrep("슬롯", V_OV_SLOT), 4), s4, s5)
+    if_b3 = b_ifelse(bs, cmp_op("operator_equals", vrep("슬롯", V_OV_SLOT), 3), s3, if_b4)
+    if_b2 = b_ifelse(bs, cmp_op("operator_equals", vrep("슬롯", V_OV_SLOT), 2), s2, if_b3)
+    if_b1 = b_ifelse(bs, cmp_op("operator_equals", vrep("슬롯", V_OV_SLOT), 1), s1, if_b2)
+    w = b_wait(bs, 0.05)
+    C(bs, [if_b1, w])
+    fe = b_forever(bs, if_b1)
+    C(bs, [ch, set1, inc_cnt, set_slot, fr, g, sz, fe])
+
+    add_comment(bs, comments, if_b1,
+        "🔋 버튼 위에 겹쳐서 상태를 보여줘요: 재충전(파랑, 차오르며 사라짐)·골드부족(회색)·"
+        "유닛 가득참(빨강)·잠금(어두움). 준비되면 사라져요.",
+        x=460, y=380, w=340, h=140)
+
+    return bs, comments
+
+# ============================================================
 #  main
 # ============================================================
 def main():
@@ -1736,6 +1900,7 @@ def main():
     bqn_md5  = save_svg(BQUEEN_SVG)
     boom_md5 = save_svg(BOOM_SVG)
     bar_md5  = [save_svg(s) for s in BAR_SVGS]
+    ov_md5   = [save_svg(s) for s in OVERLAY_SVGS]
     card_md5 = save_svg(CARD_SVG)
     rs_md5   = save_svg(RESULT_SVG)
     inv_md5  = save_svg(INVIS_SVG)
@@ -1776,6 +1941,7 @@ def main():
     pop_blocks, pop_cmt = build_popup_blocks()
     card_blocks, card_cmt = build_card_blocks()
     go_blocks, go_cmt = build_gameover_blocks()
+    ov_blocks, ov_cmt = build_overlay_blocks()
 
     stage = {
         "isStage": True, "name": "Stage",
@@ -1784,31 +1950,31 @@ def main():
             V_STARTGOLD: ["시작골드", 200], V_GOLDRATE: ["초당골드", 8], V_KILLGOLD: ["처치골드", 2],
             V_CLEARGOLD: ["스테이지클리어골드", 50], V_COSTPW: ["폰코스트", 18], V_COSTBS: ["비숍코스트", 30],
             V_COSTKN: ["나이트코스트", 45], V_COSTRK: ["룩코스트", 70], V_COSTQN: ["퀸코스트", 110],
-            V_MAXALLY: ["최대유닛수", 16], V_MAXENEMY: ["적최대유닛수", 16], V_KINGMAX: ["하얀킹최대체력", 100],
+            V_MAXALLY: ["최대유닛수", 12], V_MAXENEMY: ["적최대유닛수", 12], V_KINGMAX: ["하얀킹최대체력", 100],
             V_ENKINGBASE: ["검은킹기본체력", 120], V_SCALE: ["적성장배율", 1.25], V_UNLKKN: ["나이트해금스테이지", 2],
             V_UNLKRK: ["룩해금스테이지", 3], V_UNLKQN: ["퀸해금스테이지", 4],
-            V_TICK: ["시뮬틱", 0.03], V_REACH: ["킹공격거리", 40], V_LANEY: ["레인Y", -50],
+            V_TICK: ["시뮬틱", 0.02], V_REACH: ["킹공격거리", 40], V_LANEY: ["레인Y", -50],
             V_MYKX: ["하얀킹X", -200], V_ENKX: ["검은킹X", 200],
             V_PWHP: ["폰_체력", 12], V_PWATK: ["폰_공격력", 4], V_PWCD: ["폰_공속", 0.6],
-            V_PWSP: ["폰_속도", 2.3], V_PWR: ["폰_사거리", 30], V_PWSUM: ["폰_소환쿨", 0.35],
+            V_PWSP: ["폰_속도", 4.0], V_PWR: ["폰_사거리", 30], V_PWSUM: ["폰_소환쿨", 0.35],
             V_BSHP: ["비숍_체력", 8], V_BSATK: ["비숍_공격력", 5], V_BSCD: ["비숍_공속", 0.8],
-            V_BSSP: ["비숍_속도", 1.7], V_BSR: ["비숍_사거리", 105], V_BSSUM: ["비숍_소환쿨", 0.6],
+            V_BSSP: ["비숍_속도", 3.0], V_BSR: ["비숍_사거리", 105], V_BSSUM: ["비숍_소환쿨", 0.6],
             V_KNHP: ["나이트_체력", 22], V_KNATK: ["나이트_공격력", 9], V_KNCD: ["나이트_공속", 0.7],
-            V_KNSP: ["나이트_속도", 2.6], V_KNR: ["나이트_사거리", 34], V_KNSUM: ["나이트_소환쿨", 0.9],
+            V_KNSP: ["나이트_속도", 4.5], V_KNR: ["나이트_사거리", 34], V_KNSUM: ["나이트_소환쿨", 0.9],
             V_RKHP: ["룩_체력", 16], V_RKATK: ["룩_공격력", 6], V_RKCD: ["룩_공속", 1.4],
-            V_RKSP: ["룩_속도", 1.0], V_RKR: ["룩_사거리", 130], V_RKSUM: ["룩_소환쿨", 1.3],
+            V_RKSP: ["룩_속도", 1.8], V_RKR: ["룩_사거리", 130], V_RKSUM: ["룩_소환쿨", 1.3],
             V_QNHP: ["퀸_체력", 30], V_QNATK: ["퀸_공격력", 7], V_QNCD: ["퀸_공속", 1.2],
-            V_QNSP: ["퀸_속도", 1.3], V_QNR: ["퀸_사거리", 120], V_QNSUM: ["퀸_소환쿨", 1.8],
+            V_QNSP: ["퀸_속도", 2.3], V_QNR: ["퀸_사거리", 120], V_QNSUM: ["퀸_소환쿨", 1.8],
             V_EPHP: ["적폰_체력", 10], V_EPATK: ["적폰_공격력", 3], V_EPCD: ["적폰_공속", 0.7],
-            V_EPSP: ["적폰_속도", 2.0], V_EPR: ["적폰_사거리", 30],
+            V_EPSP: ["적폰_속도", 3.5], V_EPR: ["적폰_사거리", 30],
             V_EBHP: ["적비숍_체력", 7], V_EBATK: ["적비숍_공격력", 4], V_EBCD: ["적비숍_공속", 0.9],
-            V_EBSP: ["적비숍_속도", 1.6], V_EBR: ["적비숍_사거리", 100],
+            V_EBSP: ["적비숍_속도", 2.8], V_EBR: ["적비숍_사거리", 100],
             V_ENKHP: ["적나이트_체력", 20], V_ENKATK: ["적나이트_공격력", 8], V_ENKCD: ["적나이트_공속", 0.8],
-            V_ENKSP: ["적나이트_속도", 2.3], V_ENKR: ["적나이트_사거리", 34],
+            V_ENKSP: ["적나이트_속도", 4.0], V_ENKR: ["적나이트_사거리", 34],
             V_ERHP: ["적룩_체력", 15], V_ERATK: ["적룩_공격력", 5], V_ERCD: ["적룩_공속", 1.4],
-            V_ERSP: ["적룩_속도", 0.9], V_ERR: ["적룩_사거리", 120],
+            V_ERSP: ["적룩_속도", 1.6], V_ERR: ["적룩_사거리", 120],
             V_EQHP: ["적퀸_체력", 40], V_EQATK: ["적퀸_공격력", 7], V_EQCD: ["적퀸_공속", 1.2],
-            V_EQSP: ["적퀸_속도", 1.2], V_EQR: ["적퀸_사거리", 115],
+            V_EQSP: ["적퀸_속도", 2.1], V_EQR: ["적퀸_사거리", 115],
             V_SPGAP: ["적소환간격", 2.2], V_SPDEC: ["적소환간격감소", 0.12], V_SPMIN: ["적소환최소간격", 0.7],
             V_UPGOLD: ["강화골드증가", 3], V_UPATK: ["강화공격배수", 1.15], V_UPHP: ["강화체력배수", 1.15],
             V_UPREPAIR: ["강화킹수리", 40],
@@ -1825,6 +1991,7 @@ def main():
             V_LOOPI: ["루프i", 0], V_LOOPJ: ["루프j", 0], V_CALCT: ["계산타입", 0], V_CALCD: ["계산뎀", 0],
             V_DMGVAL: ["데미지표시값", 0], V_DMGX: ["데미지표시x", 0], V_DMGY: ["데미지표시y", 0], V_DMGKIND: ["팝업종류", 0],
             V_DMGDIG: ["데미지숫자", 0], V_DMGOFF: ["데미지오프셋", 0], V_DMGLEN: ["데미지글자수", 0], V_DMGPOS: ["데미지자리", 0],
+            V_REUSE: ["재사용슬롯", 0], V_LOOPK: ["루프k", 0], V_OVCOUNT: ["오버레이카운터", 0], V_SPAWNHP: ["스폰체력", 0],
         },
         "lists": {
             L_ALLYX: ["아군X", []], L_ALLYHP: ["아군HP", []], L_ALLYT: ["아군타입", []],
@@ -1968,6 +2135,20 @@ def main():
         "draggable": False, "rotationStyle": "don't rotate"
     }
 
+    overlay = {
+        "isStage": False, "name": "쿨오버레이",
+        "variables": {V_OV_ISC: ["복제됨", 0], V_OV_SLOT: ["슬롯", 0]},
+        "lists": {}, "broadcasts": {},
+        "blocks": ov_blocks, "comments": ov_cmt,
+        "currentCostume": 0,
+        "costumes": [cos("재충전", ov_md5[0], 45, 22), cos("골드", ov_md5[1], 45, 22),
+                     cos("가득참", ov_md5[2], 45, 22), cos("잠금", ov_md5[3], 45, 22)],
+        "sounds": [],
+        "volume": 100, "layerOrder": 9, "visible": False,
+        "x": 0, "y": -150, "size": 100, "direction": 90,
+        "draggable": False, "rotationStyle": "don't rotate"
+    }
+
     monitors = [
         {"id": V_MYHP, "mode": "default", "opcode": "data_variable",
          "params": {"VARIABLE": "하얀킹체력"}, "spriteName": None,
@@ -1988,7 +2169,7 @@ def main():
     ]
 
     project = {
-        "targets": [stage, myking, enking, manager, ally, enemy, button, popup, card, gameover],
+        "targets": [stage, myking, enking, manager, ally, enemy, button, popup, card, gameover, overlay],
         "monitors": monitors, "extensions": [],
         "meta": {"semver": "3.0.0", "vm": "13.7.4-svg", "agent": "chess-war-builder"}
     }
@@ -2008,7 +2189,7 @@ def main():
     for nm, b in [("stage", stage_blocks), ("하얀킹", myk_blocks), ("검은킹", enk_blocks),
                   ("전투매니저", mgr_blocks), ("아군유닛", ally_blocks), ("적군유닛", enemy_blocks),
                   ("소환버튼", btn_blocks), ("숫자팝업", pop_blocks), ("강화카드", card_blocks),
-                  ("게임오버", go_blocks)]:
+                  ("게임오버", go_blocks), ("쿨오버레이", ov_blocks)]:
         print(f"  {nm:10s}: {len(b)} blocks")
 
 if __name__ == "__main__":
