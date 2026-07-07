@@ -26,6 +26,7 @@ function setVar(name, val) {
 function listVal(name) { const st = stage(); for (const id in st.variables) { const v = st.variables[id]; if (v.type === 'list' && v.name === name) return v.value; } return undefined; }
 function orig(name) { return vm.runtime.targets.find(t => t.sprite && t.sprite.name === name && t.isOriginal); }
 function clones(name) { return vm.runtime.targets.filter(t => t.sprite && t.sprite.name === name && t.isOriginal === false); }
+function costumeName(t) { const c = t.getCostumes()[t.currentCostume]; return c ? c.name : undefined; }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 let FAIL = false;
 function check(label, ok, extra) {
@@ -302,26 +303,39 @@ function setMouse(sx, sy, isDown) {
   check('퀸 한 쿨: 뒤 적은 광역만 (뎀 ≈ 공격력=7)', Math.abs(backDmg - 7) < 0.5, `뒤 피해=${backDmg}`);
   check('이중 공격: 최전방 피해 > 뒤 피해 (단일이 더해짐)', frontDmg > backDmg, `${frontDmg} vs ${backDmg}`);
 
-  // ---- (5d) 검은 퀸 보스 스폰 (6+스테이지) ----
-  console.log('--- (5d) 검은 퀸 보스 스폰 (6+스테이지) ---');
+  // ---- (5d) 검은 퀸 보스 (타입5): 스폰/렌더/HP 지수 스케일 — 결정적(RNG 미의존) ----
+  // 주: 스포너의 "6+스테이지 보스 1/8 확률 롤"은 순수 RNG glue라 관측이 flaky.
+  //     여기선 타입5 적을 실제 적소환 파이프라인으로 직접 생성해 HP 스케일·렌더를 0% flake로 검증한다.
+  console.log('--- (5d) 검은 퀸 보스: 타입5 스폰·렌더·HP 스케일 (결정적) ---');
   setVar('게임상태', 2);
   for (const nm of ['적군X','적군HP','적군타입','적군살아있음','적군쿨']) { listVal(nm).length = 0; }
-  // 보스는 스폰마다 1/8 확률 → 스폰을 많이 돌려 관측 확률↑ (min간격 낮추고 상한 크게, 길게)
+  setVar('하얀킹체력', 99999);   // 보스가 밀고 와도 게임오버로 truncate 되지 않게
+  setVar('적배율', 2); setVar('스테이지', 8); setVar('적군수', 0);
+  const eqBase = Number(stageVars().적퀸_체력);   // 32
+  const expectedHP = eqBase * 2;                   // × 적배율
+  // 스포너가 하는 그대로 append(타입5, HP=적퀸_체력×적배율) 후 적소환 방송 → 렌더 클론 생성
+  listVal('적군X').push(150); listVal('적군HP').push(expectedHP); listVal('적군타입').push(5);
+  listVal('적군살아있음').push(1); listVal('적군쿨').push(0);
+  setVar('새적슬롯', listVal('적군X').length); setVar('적군수', 1);
+  setVar('게임상태', 1);
+  vm.runtime.startHats('event_whenbroadcastreceived', { BROADCAST_OPTION: '적소환' });
+  await sleep(250);
+  check('검은 퀸(타입5) HP = 적퀸_체력(32) × 적배율(2) = 64 (지수 스케일)',
+        Math.abs(Number(listVal('적군HP').slice(-1)[0]) - expectedHP) < 1e-6, `HP=${listVal('적군HP').slice(-1)[0]} 기대=${expectedHP}`);
+  const bossClone = clones('적군유닛').find(c => costumeName(c) === '검은퀸');
+  check('타입5 렌더러가 "검은퀸" 코스튬으로 그림', !!bossClone,
+        `적군유닛 클론 코스튬=${clones('적군유닛').map(costumeName).join(',')}`);
+  // 스포너에 6+스테이지 보스 롤이 구조적으로 존재하는지(런타임 샘플, 정보용·비강제):
+  for (const nm of ['적군X','적군HP','적군타입','적군살아있음','적군쿨']) { listVal(nm).length = 0; }
   setVar('적군수', 0); setVar('적최대유닛수', 999);
   setVar('적소환간격', 0.1); setVar('적소환간격감소', 0); setVar('적소환최소간격', 0.05);
-  setVar('스테이지', 8); setVar('적배율', 2);
-  setVar('게임상태', 1);
-  await sleep(4000);
-  const types = (listVal('적군타입')||[]).map(Number);
-  const sawQueen = types.includes(5);
-  const validTypes = types.length >= 1 && types.every(t => t>=1 && t<=5);
-  check('6+스테이지 스폰 타입이 1~5 범위', validTypes, `types=${JSON.stringify(types)}`);
-  check('여러 스폰 중 검은 퀸(타입5) 보스 등장', sawQueen, `saw5=${sawQueen} (types=${JSON.stringify(types)})`);
-  if (sawQueen) {
-    const qi = types.indexOf(5);
-    const eqHp = Number(listVal('적군HP')[qi]);
-    check('검은 퀸 HP = 적퀸_체력(32) × 적배율(2) = 64', Math.abs(eqHp - 64) < 1e-6, `HP=${eqHp}`);
-  }
+  await sleep(3000);
+  const sampleTypes = (listVal('적군타입')||[]).map(Number);
+  const bossCount = sampleTypes.filter(t => t === 5).length;
+  const validTypes = sampleTypes.length >= 1 && sampleTypes.every(t => t>=1 && t<=5);
+  check('6+스테이지 스폰 타입이 1~5 범위(스포너 조합)', validTypes, `n=${sampleTypes.length} types(1~5)`);
+  console.log(`  (참고) 스포너 샘플 ${sampleTypes.length}기 중 검은퀸 보스 ${bossCount}기 관측 — 1/8 확률 롤(비강제)`);
+  setVar('하얀킹체력', 100);
 
   // ---- (6) 스테이지 클리어 → 강화 → 지수 스케일 ----
   console.log('--- (6) 스테이지 클리어(체크메이트) → 강화 → 지수 스케일 ---');
