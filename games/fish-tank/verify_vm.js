@@ -127,8 +127,8 @@ async function steerToward(me, tx, ty, maxSteps, onStep) {
   console.log('--- 튜닝 14개 초기값 ---');
   const expect = {
     성장량:7, 내속도:6, 적속도:1.6, 스폰간격:0.7, 큰물고기비율:0.2, 중간물고기비율:0.3,
-    먹기기준:0.9, 최대물고기:16, 시작크기:60, 목표크기:110, 작은크기:35, 중간크기:65,
-    큰크기:100, 점수당먹기:1,
+    먹기기준:0.9, 최대물고기:16, 시작크기:60, 표시크기상한:150, 작은배율:0.6, 중간배율:0.95,
+    큰배율:1.35, 점수당먹기:1,
   };
   let v = stageVars(); let initOK = true, bad = [];
   for (const k in expect) if (Number(v[k]) !== Number(expect[k])) { initOK = false; bad.push(`${k}=${v[k]}`); }
@@ -144,9 +144,11 @@ async function steerToward(me, tx, ty, maxSteps, onStep) {
   v = stageVars();
   check('물고기 클론 스폰됨 (>=1)', fish.length >= 1, `clones=${fish.length}, 물고기수=${v.물고기수}`);
   const tiers = fish.map(c => Number(cloneLocal(c, '내물고기크기')));
-  // 지터로 3티어 중심(35±8 / 65±12 / 100±15) 주변으로 흩어짐 → 각 구간 범위 안에 들어야 함
-  const inTierRange = s => (s>=27&&s<=43) || (s>=53&&s<=77) || (s>=85&&s<=115);
-  check('클론 크기가 티어 구간(작~35/중~65/대~100) ±지터 범위 내', tiers.every(inTierRange), JSON.stringify(tiers));
+  // 상대 스폰: 크기 = 내크기(60) × 배율(0.6/0.95/1.35) ± 지터. 각 구간 근처면 됨.
+  const my0 = Number(getVar('내크기'));
+  const inTierRange = s => (s>=my0*0.45&&s<=my0*0.72) || (s>=my0*0.8&&s<=my0*1.08) || (s>=my0*1.18&&s<=my0*1.5);
+  check('클론 크기가 내크기 상대 티어 구간(×0.6/×0.95/×1.35) ±지터 범위 내', tiers.every(inTierRange),
+        `내크기=${my0} tiers=${JSON.stringify(tiers)}`);
   const costumes = fish.map(c => { const cc = c.getCostumes()[c.currentCostume]; return cc && cc.name; });
   check('클론 코스튬 ∈ {작은,중간,큰}', costumes.every(c => ['작은','중간','큰'].includes(c)), JSON.stringify(costumes));
 
@@ -182,12 +184,11 @@ async function steerToward(me, tx, ty, maxSteps, onStep) {
   const inwardOK = edgeSamples.length >= 4;
   check('가장자리 표본 다수 확보 (안쪽 진입 관측 기반)', inwardOK, `표본=${edgeSamples.length}`);
 
-  // ================= (신규) 스폰 크기 다양화 (고정 3값 아님) =================
+  // ================= (신규) 스폰 크기 다양화 =================
   console.log('--- 스폰 크기 다양화 ---');
-  const uniqSizes = [...new Set(sizeSamples)];
-  const onlyFixed3 = uniqSizes.every(s => [35,65,100].includes(s));
-  check('스폰 크기가 고정 3값(35/65/100)이 아니라 다양함 (지터 관측)',
-        sizeSamples.length >= 5 && uniqSizes.length >= 4 && !onlyFixed3,
+  const uniqSizes = [...new Set(sizeSamples.map(s => Math.round(s)))];
+  check('스폰 크기가 다양함 (고정값 아님, 지터 관측)',
+        sizeSamples.length >= 5 && uniqSizes.length >= 4,
         `표본=${sizeSamples.length}, 고유값=${uniqSizes.length}종 ${JSON.stringify(uniqSizes.sort((a,b)=>a-b))}`);
 
   // ================= (신규) 방향키 좌우 반전 정합 (오른쪽=오른쪽 바라봄) =================
@@ -308,8 +309,7 @@ async function steerToward(me, tx, ty, maxSteps, onStep) {
   // 안전(초록·밝음: color≈70, brightness≈25) ↔ 위험(붉음·어두움: color≈180, brightness≈-15)
   // 로 실시간 전환되는지 관측. (강제로 이펙트를 세팅하지 않고, 클론 스크립트가 공유변수
   //  '내크기'만 읽어 스스로 갱신하는 것을 본다.)
-  SAFE = true;
-  const goalSaved = getVar('목표크기'); setVar('목표크기', 9999); // 이 구간은 색신호만 관측 — 클리어로 튀지 않게
+  SAFE = true;  // 엔들리스라 클리어가 없으니 별도 격리 불필요
   const sig = await spawnControlledFish(100, '큰');
   function eff(t, name) { return t && t.effects ? t.effects[name] : undefined; }
   // (a) 내크기=60 → 60*0.9=54 < 100 → 이 물고기는 위험(못 먹음)
@@ -326,7 +326,7 @@ async function steerToward(me, tx, ty, maxSteps, onStep) {
   check('내가 성장(60→130)하니 같은 물고기가 안전 색신호로 실시간 전환 (color≈70·밝음)',
         flipped && safeColor <= 120 && safeBri > 0, `color=${safeColor}, brightness=${safeBri}`);
   if (sig && vm.runtime.targets.includes(sig)) vm.runtime.disposeTarget(sig);
-  setVar('목표크기', goalSaved); setVar('내크기', 60); setVar('물고기수', 0); setVar('게임상태', 1);
+  setVar('내크기', 60); setVar('물고기수', 0); setVar('게임상태', 1);
 
   // 내 크기 60, 먹기기준 0.9 → 60*0.9=54. 작은(35) ≤ 54 → 먹혀야 함.
   let target = await spawnControlledFish(35, '작은');
@@ -367,39 +367,96 @@ async function steerToward(me, tx, ty, maxSteps, onStep) {
 
   // ================= (검증 1c) 성장으로 관계 역전: 커지면 큰(100)도 먹는다 =================
   console.log('--- 관계 역전: 내크기 커지면 큰(100)도 먹힌다 ---');
-  setVar('목표크기', 9999); // 이 구간은 먹기만 관측 — 목표 도달 클리어로 튀지 않게 격리
   setVar('게임상태', 1); setVar('내크기', 130); me.setXY(-40, 0); // 130*0.9=117 ≥ 100 → 큰 물고기도 먹힘
   let big2 = await spawnControlledFish(100, '큰');
   const szB = getVar('내크기'); const scB = getVar('점수');
   await driveIntoTarget(big2, () => getVar('내크기') > szB || getVar('게임상태') !== 1, 50);
-  // 목표크기(120) 미만이 아니므로 클리어로 튈 수 있음 → 목표크기를 크게 올려 격리
   const grewBig = getVar('내크기') > szB && getVar('게임상태') !== 0;
   check('내크기 130일 때 큰(100) 물고기를 먹어 성장(게임오버 아님, 관계 역전)', grewBig,
         `내크기 ${szB}→${getVar('내크기')}, 게임상태=${getVar('게임상태')}, 점수 ${scB}→${getVar('점수')}`);
 
-  // ================= (검증 5) 클리어 결착 =================
-  // 결과 배너 스크립트는 게임당 한 번만 latch(wait until)되므로, 깨끗한 클리어
-  // 결착을 관측하려면 초록 깃발로 새 게임을 시작한 뒤 목표크기에 도달시킨다.
-  console.log('--- 클리어 결착 (목표크기 도달, 새 게임) ---');
-  vm.greenFlag();
-  await sleep(500);
-  patchNewClones();
-  setVar('최대물고기', 0); // 스폰 멈춰 우발 접촉 배제
-  clones('물고기').forEach(c => vm.runtime.disposeTarget(c));
-  setVar('목표크기', 120);
-  // 내크기를 목표 이상으로 만들면 Stage 클리어 감시가 게임상태=2로 (강제 아님: 실제 감시 스크립트가 판정)
-  setVar('내크기', 125);
-  await sleep(400);
-  check('내크기 ≥ 목표크기 → 게임상태=2 (CLEAR, 관측)', getVar('게임상태') === 2, `게임상태=${getVar('게임상태')}`);
-  // 결과 배너 코스튬 분기
-  await sleep(300);
-  const result = original('결과');
-  const rc = result.getCostumes()[result.currentCostume];
-  check('결과 배너 코스튬 = clear', rc && rc.name === 'clear', rc && rc.name);
-  check('결과 배너 표시됨(visible)', result.visible === true, `visible=${result.visible}`);
+  // ================= (신규) 엔들리스: 클리어 없음 — 커져도 계속 진행 =================
+  console.log('--- 엔들리스 (클리어 없음, 무한 성장) ---');
+  // 클리어 경로(게임상태=2) 자체가 코드에 없어야 한다: 어느 스크립트도 게임상태를 2로 안 만든다.
+  // (runtime 내부 블록 포맷: inputs.VALUE.block → shadow 블록의 fields.NUM.value 로 리터럴을 읽는다.)
+  const setsGameState = []; // 관측된 게임상태 리터럴 세팅 값들
+  for (const tg of vm.runtime.targets) {
+    const blks = tg.blocks._blocks || {};
+    for (const b of Object.values(blks)) {
+      if (b.opcode === 'data_setvariableto' && b.fields.VARIABLE && b.fields.VARIABLE.value === '게임상태') {
+        const inp = b.inputs.VALUE;
+        if (inp && inp.block) {
+          const sh = blks[inp.block];
+          const val = sh && sh.fields && sh.fields.NUM ? String(sh.fields.NUM.value) : '?';
+          setsGameState.push(val);
+        }
+      }
+    }
+  }
+  const setsTo2 = setsGameState.filter(v => v === '2').length;
+  check('코드에 게임상태=2(클리어) 설정 경로 없음 (엔들리스)', setsTo2 === 0,
+        `게임상태 설정 리터럴=[${setsGameState.join(',')}] → =2 는 ${setsTo2}개`);
+  // 새 게임 시작 후, 예전 목표(110) 훨씬 넘게 키워도 게임상태가 1(진행) 유지 + 여전히 스폰됨
+  vm.greenFlag(); await sleep(500); patchNewClones(); SAFE = true;
+  setVar('내크기', 300);          // 예전 목표(110) 3배 — 클리어였다면 벌써 끝났을 크기
+  setVar('최대물고기', 16); setVar('스폰간격', 0.12);
+  if (me) me.setXY(232, 162);
+  await sleep(1200);
+  check('예전 목표(110) 훨씬 넘겨도(내크기=300) 게임상태=1 유지 (엔들리스 계속 진행)',
+        getVar('게임상태') === 1, `게임상태=${getVar('게임상태')}, 내크기=${getVar('내크기')}`);
+  check('커진 뒤에도 물고기 계속 스폰됨', clones('물고기').length >= 1, `clones=${clones('물고기').length}`);
 
-  // ================= 게임오버 배너 코스튬 분기도 확인 (새 게임) =================
-  console.log('--- 게임오버 배너 코스튬 분기 (새 게임) ---');
+  // ================= (신규) 무한 도전: 커져도 먹이+위험이 공존 =================
+  console.log('--- 무한 도전 (내크기 커도 먹이+위험 공존) ---');
+  // 내크기=300 상태에서 새 스폰 표본을 모아, 나보다 작은(먹이) 것과 큰(위험) 것이 둘 다 있는지.
+  const relSizes = [];
+  const seenR = new Set(clones('물고기').map(c => c.id));
+  clones('물고기').forEach(c => relSizes.push(Number(cloneLocal(c, '내물고기크기'))));
+  for (let i = 0; i < 120 && relSizes.length < 16; i++) {
+    for (const c of clones('물고기')) if (!seenR.has(c.id)) { seenR.add(c.id); relSizes.push(Number(cloneLocal(c, '내물고기크기'))); }
+    if (me) me.setXY(232, 162);
+    await sleep(20);
+  }
+  const eatThresh = 300 * getVar('먹기기준'); // 300*0.9=270
+  const smaller = relSizes.filter(s => s <= eatThresh).length;   // 먹이(초록)
+  const bigger  = relSizes.filter(s => s > eatThresh).length;    // 위험(붉음)
+  check('내크기=300에서도 나보다 작은 먹이와 큰 위험이 공존 스폰',
+        relSizes.length >= 6 && smaller >= 1 && bigger >= 1,
+        `표본=${relSizes.length}, 먹이(≤270)=${smaller}, 위험(>270)=${bigger}`);
+
+  // ================= (신규) 표시 크기 상한 =================
+  // ※ headless scratch-vm 은 렌더러가 없어 looks_setsizeto 가 target.size 를 갱신하지
+  //   않는다(rendered-target.setSize 의 갱신이 if(renderer) 안에 있음). 그래서 .size 관측
+  //   대신, 상한 클램프 '로직'이 코드에 실재하는지를 구조로 검증한다: 내물고기/물고기가
+  //   'set size to 내크기(또는 내물고기크기)' 뒤에 'if (그 값 > 표시크기상한) set size to 표시크기상한'
+  //   을 갖는지. (표시상한 초과 성장 시 표시 size 가 상한으로 고정되는 실제 회로.)
+  console.log('--- 표시 크기 상한 (구조: 렌더러 없어 .size 관측 불가) ---');
+  const cap = getVar('표시크기상한');
+  function hasCapClamp(spriteName, sizeVarName) {
+    const tg = original(spriteName);
+    const blks = tg.blocks._blocks;
+    const varName = b => (b && b.opcode === 'data_variable') ? b.fields.VARIABLE.value : null;
+    for (const b of Object.values(blks)) {
+      if (b.opcode !== 'looks_setsizeto') continue;
+      const sizeInp = b.inputs.SIZE;
+      if (!sizeInp || !sizeInp.block) continue;
+      if (varName(blks[sizeInp.block]) !== '표시크기상한') continue;      // set size to 표시크기상한
+      const ifBlk = blks[b.parent];
+      if (!ifBlk || ifBlk.opcode !== 'control_if' || !ifBlk.inputs.CONDITION) continue;
+      const cond = blks[ifBlk.inputs.CONDITION.block];
+      if (!cond || cond.opcode !== 'operator_gt') continue;             // if (?  >  ?)
+      const names = [varName(blks[cond.inputs.OPERAND1.block]), varName(blks[cond.inputs.OPERAND2.block])];
+      if (names.includes(sizeVarName) && names.includes('표시크기상한')) return true; // (sizeVar > 표시크기상한)
+    }
+    return false;
+  }
+  check(`내물고기: 표시 size 를 표시크기상한(${cap})으로 클램프하는 회로 존재`,
+        hasCapClamp('내물고기', '내크기'), hasCapClamp('내물고기', '내크기') ? 'if(내크기>상한) set size 상한' : 'missing');
+  check(`물고기: 표시 size 를 표시크기상한(${cap})으로 클램프하는 회로 존재`,
+        hasCapClamp('물고기', '내물고기크기'), hasCapClamp('물고기', '내물고기크기') ? 'if(내물고기크기>상한) set size 상한' : 'missing');
+
+  // ================= 게임오버 배너 (엔들리스: over 만) =================
+  console.log('--- 게임오버 배너 (엔들리스: over) ---');
   vm.greenFlag();
   await sleep(500);
   patchNewClones();
@@ -410,11 +467,13 @@ async function steerToward(me, tx, ty, maxSteps, onStep) {
   const result2 = original('결과');
   const rc2 = result2.getCostumes()[result2.currentCostume];
   check('게임오버 결착 → 배너 코스튬 = over', rc2 && rc2.name === 'over', rc2 && rc2.name);
+  check('게임오버 배너 표시됨(visible)', result2.visible === true, `visible=${result2.visible}`);
 
   // ================= (검증 3b) 클론 누수 0 =================
   console.log('--- 클론 정리 · 누수 0 ---');
-  // 클리어 상태에서 물고기 클론이 자기 정리하는지
-  setVar('최대물고기', 16); setVar('게임상태', 1); setVar('내크기', 60); setVar('목표크기', 120);
+  vm.greenFlag(); await sleep(500); patchNewClones(); SAFE = true;
+  setVar('최대물고기', 16); setVar('게임상태', 1); setVar('내크기', 60);
+  if (me) me.setXY(232, 162);
   await sleep(1500); // 다시 스폰
   const spawned = clones('물고기').length;
   check('재개 후 다시 스폰됨', spawned >= 1, `clones=${spawned}`);
@@ -425,7 +484,8 @@ async function steerToward(me, tx, ty, maxSteps, onStep) {
 
   // ================= (검증 6) 60초 안정성 (압축: 캡 유지 · 폭주 없음) =================
   console.log('--- 안정성: 캡 유지 · 클론 폭주 없음 ---');
-  setVar('게임상태', 1); setVar('내크기', 60); setVar('목표크기', 9999); // 클리어 안 되게
+  vm.greenFlag(); await sleep(500); patchNewClones(); SAFE = true;
+  setVar('게임상태', 1); setVar('내크기', 60); // 엔들리스: 클리어 없음
   setVar('최대물고기', 16); setVar('스폰간격', 0.1);
   releaseAll(); // 방향키 놓아 내물고기 정지
   // 내물고기를 구석에 세워두고(키 안 누름) 게임오버 없이 오래 돌린다

@@ -167,9 +167,10 @@ CLEAR_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="360" height="160" 
 
 OVER_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="360" height="160" viewBox="0 0 360 160">
   <rect x="5" y="5" width="350" height="150" rx="14" fill="#000000" opacity="0.88" stroke="#E53935" stroke-width="5"/>
-  <text x="180" y="68" text-anchor="middle" fill="#E53935" font-family="Arial, sans-serif" font-size="46" font-weight="bold">GAME OVER</text>
-  <text x="180" y="104" text-anchor="middle" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="20">큰 물고기에게 잡아먹혔다!</text>
-  <text x="180" y="136" text-anchor="middle" fill="#FFCDD2" font-family="Arial, sans-serif" font-size="14">초록 깃발(&#9654;) 다시 도전</text>
+  <text x="180" y="60" text-anchor="middle" fill="#E53935" font-family="Arial, sans-serif" font-size="42" font-weight="bold">GAME OVER</text>
+  <text x="180" y="92" text-anchor="middle" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="18">큰 물고기에게 잡아먹혔다!</text>
+  <text x="180" y="118" text-anchor="middle" fill="#FFEB3B" font-family="Arial, sans-serif" font-size="17" font-weight="bold">생존시간·점수는 왼쪽 위에서 확인!</text>
+  <text x="180" y="142" text-anchor="middle" fill="#FFCDD2" font-family="Arial, sans-serif" font-size="14">초록 깃발(&#9654;) 다시 도전</text>
 </svg>"""
 
 # ============================================================
@@ -347,20 +348,21 @@ V_MIDRATE  = "varMidRate06"    # 중간물고기비율 0.3
 V_EATRATIO = "varEatRatio07"   # 먹기기준      0.9
 V_CAP      = "varCap08"        # 최대물고기    16
 V_STARTSZ  = "varStartSize09"  # 시작크기      60
-V_GOALSZ   = "varGoalSize10"   # 목표크기      120
-V_SIZES    = "varSizeS11"      # 작은크기      35
-V_SIZEM    = "varSizeM12"      # 중간크기      65
-V_SIZEL    = "varSizeL13"      # 큰크기        100
+V_DISPCAP  = "varGoalSize10"   # 표시크기상한   150 (엔들리스: 표시 size 상한. 내부 성장은 무한)
+V_SIZES    = "varSizeS11"      # 작은배율      0.6  (스폰크기 = 내크기 × 이 배율, 먹이=초록)
+V_SIZEM    = "varSizeM12"      # 중간배율      0.95 (스폰크기 = 내크기 × 이 배율, 경계)
+V_SIZEL    = "varSizeL13"      # 큰배율        1.35 (스폰크기 = 내크기 × 이 배율, 위험=붉음)
 V_SCOREPER = "varScorePer14"   # 점수당먹기    1
 
 # ----- 5.2 진행/내부 상태 7개 -----
-V_STATE    = "varState15"      # 게임상태  1=플레이,2=클리어,0=게임오버
+V_STATE    = "varState15"      # 게임상태  1=플레이, 0=게임오버 (엔들리스: 클리어=2 없음)
 V_SCORE    = "varScore16"      # 점수
 V_MYSIZE   = "varMySize17"     # 내크기 (현재 size)
 V_ALIVE    = "varAlive18"      # 물고기수 (캡 비교용)
 V_TOUCHSZ  = "varTouchSize19"  # 접촉물고기크기 (크기 비교 핸드셰이크 채널)
 V_POPX     = "varPopX20"       # 뽁X
 V_POPY     = "varPopY21"       # 뽁Y
+V_SURVIVE  = "varSurvive22"    # 생존시간 (초) — 시작 0, 플레이 중 +1/초, 게임오버 시 정지
 
 # ----- 5.3 클론-로컬 변수 4개 -----
 V_FISHISC   = "varFishIsClone"  # 물고기: 복제됨
@@ -397,10 +399,10 @@ def build_stage_blocks():
     add_set("먹기기준", V_EATRATIO, 0.9)
     add_set("최대물고기", V_CAP, 16)
     add_set("시작크기", V_STARTSZ, 60)
-    add_set("목표크기", V_GOALSZ, 110)
-    add_set("작은크기", V_SIZES, 35)
-    add_set("중간크기", V_SIZEM, 65)
-    add_set("큰크기", V_SIZEL, 100)
+    add_set("표시크기상한", V_DISPCAP, 150)
+    add_set("작은배율", V_SIZES, 0.6)
+    add_set("중간배율", V_SIZEM, 0.95)
+    add_set("큰배율", V_SIZEL, 1.35)
     add_set("점수당먹기", V_SCOREPER, 1)
 
     # ── 진행 상태 ──
@@ -414,55 +416,41 @@ def build_stage_blocks():
     add_set("접촉물고기크기", V_TOUCHSZ, 0)
     add_set("뽁X", V_POPX, 0)
     add_set("뽁Y", V_POPY, 0)
+    add_set("생존시간", V_SURVIVE, 0)     # 게임 시작 시 0으로 리셋
 
     w1 = b_wait(bs, 0.3); seq.append((w1, bs[w1]))
     bc_start = b_broadcast(bs, "게임시작", BR_START); seq.append((bc_start, bs[bc_start]))
     chain(seq)
 
-    # ===== (B) 클리어 감시 forever =====
+    # ===== (B) 생존시간 타이머 forever (매초 +1, 게임상태=1 동안만) =====
+    #   엔들리스라 승리는 없다. 큰 물고기에 잡아먹히면(게임상태=0) 이 루프의 if 가 꺼져
+    #   생존시간 증가가 멈추고 그 최종값이 게임오버 화면에 남는다.
     hb = gen(); bs[hb] = mk("event_whenbroadcastreceived", top=True, x=340, y=20,
         fields={"BROADCAST_OPTION": ["게임시작", BR_START]})
-    # wait until 게임상태=1
-    state_ready = vrep("게임상태", V_STATE)
-    cond_ready = cmp_op("operator_equals", state_ready, 1)
-    wu = gen(); bs[wu] = mk("control_wait_until", inputs={"CONDITION": [2, cond_ready]})
-    bs[cond_ready]["parent"] = wu
-    # forever: if (내크기>=목표크기) and (게임상태=1) → 게임상태=2 + 클리어 사운드
-    mysize_r = vrep("내크기", V_MYSIZE); goal_r = vrep("목표크기", V_GOALSZ)
-    cond_reach = cmp_op("operator_gt", mysize_r, goal_r)   # >= 를 (> goal) 또는 별도로; 아래서 >= 위해 재구성
-    # 정확한 >= 를 위해: not(내크기 < 목표크기)
-    mysize_r2 = vrep("내크기", V_MYSIZE); goal_r2 = vrep("목표크기", V_GOALSZ)
-    cond_lt = cmp_op("operator_lt", mysize_r2, goal_r2)
-    cond_ge = gen(); bs[cond_ge] = mk("operator_not", inputs={"OPERAND": [2, cond_lt]})
-    bs[cond_lt]["parent"] = cond_ge
-    # cond_reach 는 미사용이므로 제거
-    del bs[cond_reach]; del bs[mysize_r]; del bs[goal_r]
-    state_c = vrep("게임상태", V_STATE)
-    cond_play_c = cmp_op("operator_equals", state_c, 1)
-    cond_clear = bool_op("operator_and", cond_ge, cond_play_c)
-    set_st2 = b_setvar(bs, "게임상태", V_STATE, 2)
-    sh_clear, _ = b_sound(bs, 240)   # 클리어 효과음
-    chain([(set_st2, bs[set_st2]), (sh_clear, bs[sh_clear])])
-    if_clear = b_if(bs, cond_clear, set_st2)
-    w_c = b_wait(bs, 0.05)
-    chain([(if_clear, bs[if_clear]), (w_c, bs[w_c])])
-    fe_c = b_forever(bs, if_clear)
-    chain([(hb, bs[hb]), (wu, bs[wu]), (fe_c, bs[fe_c])])
+    wt = b_wait(bs, 1)                    # 1초 대기
+    state_t = vrep("게임상태", V_STATE)
+    cond_play_t = cmp_op("operator_equals", state_t, 1)
+    inc_time = b_changevar(bs, "생존시간", V_SURVIVE, 1)
+    if_play_t = b_if(bs, cond_play_t, inc_time)   # 게임상태=1 일 때만 +1
+    chain([(wt, bs[wt]), (if_play_t, bs[if_play_t])])
+    fe_t = b_forever(bs, wt)
+    chain([(hb, bs[hb]), (fe_t, bs[fe_t])])
 
     # ── 가이드 코멘트 ──
     add_comment(bs, comments, h,
         "⚙️ 개조 손잡이 (여기가 이 게임의 심장!)\n"
         "이 초록 깃발 묶음에 게임의 모든 숫자가 한글 변수로 모여 있어요. "
         "여기 숫자 하나만 바꾸면 게임이 확 달라져요.\n"
-        "• 성장량 3→10 : 한 마리만 먹어도 쑥쑥\n"
+        "• 성장량 7→15 : 한 마리만 먹어도 쑥쑥\n"
         "• 먹기기준 0.9→0.6 : 확실히 작아야만 먹혀 까다로움\n"
         "• 큰물고기비율 0.2→0.6 : 상어 소굴! 위험천만\n"
-        "바꾸기 전에 '이렇게 될 것 같다'를 예상하고 ▶ 눌러 확인!",
-        x=-360, y=-280, w=340, h=210)
+        "• 표시크기상한 : 무한 성장이라도 화면상 이 크기까지만 커 보여요\n"
+        "엔들리스라 목표 없이 계속 먹으며 점수를 올려요. 큰 물고기에 닿으면 끝!",
+        x=-360, y=-280, w=340, h=220)
     add_comment(bs, comments, hb,
-        "🏆 클리어 감시\n"
-        "내크기가 목표크기 이상이 되면 게임상태=2 (CLEAR). "
-        "게임오버(게임상태=0)는 내물고기 판정에서 직접 정하니 여긴 클리어만 봐요.",
+        "⏱️ 생존시간 타이머\n"
+        "1초마다 생존시간이 +1 돼요(게임상태=1 동안만). 큰 물고기에 잡아먹히면 "
+        "게임상태가 0이 되어 이 증가가 멈추고, 그때까지 버틴 시간이 화면에 남아요.",
         x=580, y=-40, w=300, h=140)
 
     return bs, comments
@@ -488,10 +476,20 @@ def build_me_blocks():
     # ===== (B) 방향키(↑↓←→) 이동 + 진행방향 바라보기 + 가장자리 클램프 + 크기 반영 forever =====
     hb = gen(); bs[hb] = mk("event_whenbroadcastreceived", top=True, x=20, y=200,
         fields={"BROADCAST_OPTION": ["게임시작", BR_START]})
-    # if 게임상태=1 { set size to 내크기 ; 방향키별 이동 ; 클램프 }
+    # if 게임상태=1 { set size to min(내크기, 표시크기상한) ; 방향키별 이동 ; 클램프 }
+    #   ★엔들리스: 내크기(먹기 판정용 내부 성장값)는 무한히 오르지만, 화면 표시 size 는
+    #    표시크기상한(150)으로 클램프해 물고기가 화면을 꽉 채워 못 노는 일이 없게 한다.
     mysize_r = vrep("내크기", V_MYSIZE)
     set_size = gen(); bs[set_size] = mk("looks_setsizeto", inputs={"SIZE": slot(mysize_r)})
     bs[mysize_r]["parent"] = set_size
+    # if 내크기 > 표시크기상한 → set size to 표시크기상한
+    mysz_cap = vrep("내크기", V_MYSIZE); cap_r = vrep("표시크기상한", V_DISPCAP)
+    cond_over_cap = cmp_op("operator_gt", mysz_cap, cap_r)
+    cap_r2 = vrep("표시크기상한", V_DISPCAP)
+    set_size_cap = gen(); bs[set_size_cap] = mk("looks_setsizeto", inputs={"SIZE": slot(cap_r2)})
+    bs[cap_r2]["parent"] = set_size_cap
+    if_cap = b_if(bs, cond_over_cap, set_size_cap)
+    chain([(set_size, bs[set_size]), (if_cap, bs[if_cap])])
 
     inner = []
     # → : change x by +내속도 ; point in direction -90
@@ -533,7 +531,8 @@ def build_me_blocks():
     inner.append(clamp("motion_xposition", "motion_setx", "operator_lt", -230))
     inner.append(clamp("motion_yposition", "motion_sety", "operator_gt", 160))
     inner.append(clamp("motion_yposition", "motion_sety", "operator_lt", -160))
-    chain([(set_size, bs[set_size])] + [(b, bs[b]) for b in inner])
+    # set_size → if_cap 는 위에서 연결됨. if_cap → inner 이어붙임.
+    chain([(if_cap, bs[if_cap])] + [(b, bs[b]) for b in inner])
 
     state_b = vrep("게임상태", V_STATE)
     cond_play_b = cmp_op("operator_equals", state_b, 1)
@@ -571,8 +570,9 @@ def build_fish_blocks():
     h = gen(); bs[h] = mk("event_whenflagclicked", top=True, x=20, y=20)
     hi = gen(); bs[hi] = mk("looks_hide")
     rs = gen(); bs[rs] = mk("motion_setrotationstyle", fields={"STYLE": ["left-right", None]})
+    vol = gen(); bs[vol] = mk("sound_setvolumeto", inputs={"VOLUME": num(100)})  # 효과음 최대 볼륨
     orig0 = b_setvar(bs, "복제됨", V_FISHISC, 0)
-    chain([(h, bs[h]), (hi, bs[hi]), (rs, bs[rs]), (orig0, bs[orig0])])
+    chain([(h, bs[h]), (hi, bs[hi]), (rs, bs[rs]), (vol, bs[vol]), (orig0, bs[orig0])])
 
     # ===== (B) 스폰 forever (원본만) — 캡 아래에서 스폰간격마다 1마리 =====
     hb = gen(); bs[hb] = mk("event_whenbroadcastreceived", top=True, x=20, y=180,
@@ -614,47 +614,67 @@ def build_fish_blocks():
         bs[cmc]["parent"] = sw
         return sw
 
-    # 티어 크기에 ±지터를 더해 크기를 다양화한다(고정 3값 → 구간 내 변주).
-    #   튜닝 노브(작은/중간/큰크기)는 각 구간 중심으로 유지, 그 안에서 랜덤 폭만 준다.
-    def jitter(span):
-        j = gen(); bs[j] = mk("operator_random", inputs={"FROM": num(-span), "TO": num(span)})
-        cid = gen(); bs[cid] = mk("data_changevariableby",
-            inputs={"VALUE": slot(j)}, fields={"VARIABLE": ["내물고기크기", V_FISHMYSZ]})
-        bs[j]["parent"] = cid
-        return cid
+    # ── ★엔들리스 상대 스폰: 크기를 '내크기'에 맞춰 정한다(고정 절대값 아님) ──
+    #   내물고기크기 = 내크기 × 티어배율, 그 위에 ±(내크기×지터율) 로 변주.
+    #   → 내가 아무리 커져도 늘 나보다 작은 것(작은배율 0.6<먹기기준 → 초록 먹이)과
+    #     나보다 큰 것(큰배율 1.35 → 붉은 위험)이 공존한다. 무한 도전 유지.
+    #   튜닝 노브(작은/중간/큰배율·큰/중간물고기비율)는 그대로 살아있다.
+    def set_rel(mult_name, mult_id, jit_frac):
+        # 내물고기크기 = 내크기 × 배율
+        mysz = vrep("내크기", V_MYSIZE); mult_r = vrep(mult_name, mult_id)
+        prod = op("operator_multiply", mysz, mult_r)
+        setb = b_setvar(bs, "내물고기크기", V_FISHMYSZ, prod)
+        # ± (내크기 × jit_frac)
+        mysz2 = vrep("내크기", V_MYSIZE)
+        jspan = op("operator_multiply", mysz2, jit_frac)
+        neg = op("operator_multiply", jspan, -1)
+        jr = gen(); bs[jr] = mk("operator_random",
+            inputs={"FROM": slot(neg), "TO": slot(jspan)})
+        bs[neg]["parent"] = jr; bs[jspan]["parent"] = jr
+        jitb = gen(); bs[jitb] = mk("data_changevariableby",
+            inputs={"VALUE": slot(jr)}, fields={"VARIABLE": ["내물고기크기", V_FISHMYSZ]})
+        bs[jr]["parent"] = jitb
+        chain([(setb, bs[setb]), (jitb, bs[jitb])])
+        return setb, jitb  # (head, tail) — tail 뒤에 코스튬 전환을 이어붙여 지터가 유지되게
 
-    # 큰 분기
+    # 큰 분기 (위험·붉음)
     bigrate_r = vrep("큰물고기비율", V_BIGRATE)
     big_thresh = op("operator_multiply", bigrate_r, 100)
     r_ref1 = vrep("내물고기크기", V_FISHMYSZ)
     cond_big = cmp_op("operator_lt", r_ref1, big_thresh)
-    set_big_sz = b_setvar(bs, "내물고기크기", V_FISHMYSZ, vrep("큰크기", V_SIZEL))
-    jit_big = jitter(15)
+    set_big_sz, big_tail = set_rel("큰배율", V_SIZEL, 0.12)
     sw_big = costume_set("큰")
-    chain([(set_big_sz, bs[set_big_sz]), (jit_big, bs[jit_big]), (sw_big, bs[sw_big])])
+    chain([(big_tail, bs[big_tail]), (sw_big, bs[sw_big])])
     # 중간 분기: r < (큰비율+중간비율)*100
     bigrate_r2 = vrep("큰물고기비율", V_BIGRATE); midrate_r = vrep("중간물고기비율", V_MIDRATE)
     sum_rate = op("operator_add", bigrate_r2, midrate_r)
     mid_thresh = op("operator_multiply", sum_rate, 100)
     r_ref2 = vrep("내물고기크기", V_FISHMYSZ)
     cond_mid = cmp_op("operator_lt", r_ref2, mid_thresh)
-    set_mid_sz = b_setvar(bs, "내물고기크기", V_FISHMYSZ, vrep("중간크기", V_SIZEM))
-    jit_mid = jitter(12)
+    set_mid_sz, mid_tail = set_rel("중간배율", V_SIZEM, 0.1)
     sw_mid = costume_set("중간")
-    chain([(set_mid_sz, bs[set_mid_sz]), (jit_mid, bs[jit_mid]), (sw_mid, bs[sw_mid])])
-    # 작은 분기 (else)
-    set_small_sz = b_setvar(bs, "내물고기크기", V_FISHMYSZ, vrep("작은크기", V_SIZES))
-    jit_small = jitter(8)
+    chain([(mid_tail, bs[mid_tail]), (sw_mid, bs[sw_mid])])
+    # 작은 분기 (else, 먹이·초록)
+    set_small_sz, small_tail = set_rel("작은배율", V_SIZES, 0.08)
     sw_small = costume_set("작은")
-    chain([(set_small_sz, bs[set_small_sz]), (jit_small, bs[jit_small]), (sw_small, bs[sw_small])])
+    chain([(small_tail, bs[small_tail]), (sw_small, bs[sw_small])])
     if_mid = b_ifelse(bs, cond_mid, set_mid_sz, set_small_sz)
     if_tier = b_ifelse(bs, cond_big, set_big_sz, if_mid)
     chain([(set_r, bs[set_r]), (if_tier, bs[if_tier])])
 
-    # set size to 내물고기크기
+    # set size to min(내물고기크기, 표시크기상한)
+    #   내물고기크기(먹기 판정용 내부값)는 무한대로 클 수 있지만, 화면 표시 size 는
+    #   표시크기상한으로 클램프해 위험 물고기가 화면을 뒤덮지 않게 한다.
     mysz_r = vrep("내물고기크기", V_FISHMYSZ)
     set_size = gen(); bs[set_size] = mk("looks_setsizeto", inputs={"SIZE": slot(mysz_r)})
     bs[mysz_r]["parent"] = set_size
+    mysz_cap_f = vrep("내물고기크기", V_FISHMYSZ); cap_rf = vrep("표시크기상한", V_DISPCAP)
+    cond_fcap = cmp_op("operator_gt", mysz_cap_f, cap_rf)
+    cap_rf2 = vrep("표시크기상한", V_DISPCAP)
+    set_fcap = gen(); bs[set_fcap] = mk("looks_setsizeto", inputs={"SIZE": slot(cap_rf2)})
+    bs[cap_rf2]["parent"] = set_fcap
+    if_fcap = b_if(bs, cond_fcap, set_fcap)
+    chain([(set_size, bs[set_size]), (if_fcap, bs[if_fcap])])
 
     # ── 화면 4변 중 랜덤 가장자리에서 스폰 + 안쪽(중앙 방향)으로 헤엄쳐 들어오게 ──
     #    (플레이어 근처 즉시 생성 금지 → "큰 물고기 갑툭튀 즉사" 방지)
@@ -711,16 +731,13 @@ def build_fish_blocks():
 
     # forever body
     body = []
-    # 1) 게임오버/클리어 시 정리
+    # 1) 게임오버 시 정리 (엔들리스: 클리어 상태 없음 → 게임상태=0 만 확인)
     state1 = vrep("게임상태", V_STATE)
     cond_go = cmp_op("operator_equals", state1, 0)
-    state1b = vrep("게임상태", V_STATE)
-    cond_cl = cmp_op("operator_equals", state1b, 2)
-    cond_end = bool_op("operator_or", cond_go, cond_cl)
     dec_alive_go = b_changevar(bs, "물고기수", V_ALIVE, -1)
     del_go = gen(); bs[del_go] = mk("control_delete_this_clone")
     chain([(dec_alive_go, bs[dec_alive_go]), (del_go, bs[del_go])])
-    if_end = b_if(bs, cond_end, dec_alive_go)
+    if_end = b_if(bs, cond_go, dec_alive_go)
     body.append(if_end)
 
     # 2) 자유 배회 (게임상태=1) — 추격 없음!
@@ -795,7 +812,7 @@ def build_fish_blocks():
            (set_px, bs[set_px]), (set_py, bs[set_py]), (bc_pop, bs[bc_pop]),
            (sh_eat, bs[sh_eat]), (dec_alive_eat, bs[dec_alive_eat]), (del_eat, bs[del_eat])])
     # ── 못 먹힘 분기(내가 큼): 피격음 → 게임오버(게임상태=0) ──
-    sh_die, _ = b_sound(bs, -300)  # 피격/게임오버
+    sh_die, _ = b_sound(bs, -120)  # 피격/게임오버 (너무 낮으면 안 들려서 -300→-120 로 또렷하게)
     set_over = b_setvar(bs, "게임상태", V_STATE, 0)
     chain([(sh_die, bs[sh_die]), (set_over, bs[set_over])])
     if_eat_txn = b_ifelse(bs, cond_eaten, inc_size, sh_die)
@@ -812,7 +829,8 @@ def build_fish_blocks():
     chain([(bid, bs[bid]) for bid in body] + [(w_body, bs[w_body])])
     fe_body = b_forever(bs, body[0])
     chain([(ch, bs[ch]), (set_isc1, bs[set_isc1]), (set_r, bs[set_r]),
-           (if_tier, bs[if_tier]), (set_size, bs[set_size]), (if_edge, bs[if_edge]),
+           (if_tier, bs[if_tier]), (set_size, bs[set_size]), (if_fcap, bs[if_fcap]),
+           (if_edge, bs[if_edge]),
            (pd0, bs[pd0]), (show, bs[show]),
            (fe_body, bs[fe_body])])
 
@@ -906,29 +924,19 @@ def build_result_blocks():
     front = gen(); bs[front] = mk("looks_gotofrontback", fields={"FRONT_BACK": ["front", None]})
     chain([(h, bs[h]), (hi, bs[hi]), (g, bs[g]), (sz, bs[sz]), (front, bs[front])])
 
-    # (B) 게임시작 → wait until 게임상태=0 or 2 → 코스튬 분기 → show
+    # (B) 게임시작 → wait until 게임상태=0 (엔들리스: 게임오버만) → over 코스튬 → show
     hb = gen(); bs[hb] = mk("event_whenbroadcastreceived", top=True, x=20, y=200,
         fields={"BROADCAST_OPTION": ["게임시작", BR_START]})
     state_v = vrep("게임상태", V_STATE)
     cond_over = cmp_op("operator_equals", state_v, 0)
-    state_v2 = vrep("게임상태", V_STATE)
-    cond_clear = cmp_op("operator_equals", state_v2, 2)
-    cond_end = bool_op("operator_or", cond_over, cond_clear)
-    wu = gen(); bs[wu] = mk("control_wait_until", inputs={"CONDITION": [2, cond_end]})
-    bs[cond_end]["parent"] = wu
-    # if 게임상태=2 switch to clear else over
-    state_v3 = vrep("게임상태", V_STATE)
-    cond_is_clear = cmp_op("operator_equals", state_v3, 2)
-    cmc_c = gen(); bs[cmc_c] = mk("looks_costume", fields={"COSTUME": ["clear", None]}, shadow=True)
-    sw_c = gen(); bs[sw_c] = mk("looks_switchcostumeto", inputs={"COSTUME": [1, cmc_c]})
-    bs[cmc_c]["parent"] = sw_c
+    wu = gen(); bs[wu] = mk("control_wait_until", inputs={"CONDITION": [2, cond_over]})
+    bs[cond_over]["parent"] = wu
     cmc_o = gen(); bs[cmc_o] = mk("looks_costume", fields={"COSTUME": ["over", None]}, shadow=True)
     sw_o = gen(); bs[sw_o] = mk("looks_switchcostumeto", inputs={"COSTUME": [1, cmc_o]})
     bs[cmc_o]["parent"] = sw_o
-    if_costume = b_ifelse(bs, cond_is_clear, sw_c, sw_o)
     front2 = gen(); bs[front2] = mk("looks_gotofrontback", fields={"FRONT_BACK": ["front", None]})
     show = gen(); bs[show] = mk("looks_show")
-    chain([(hb, bs[hb]), (wu, bs[wu]), (if_costume, bs[if_costume]),
+    chain([(hb, bs[hb]), (wu, bs[wu]), (sw_o, bs[sw_o]),
            (front2, bs[front2]), (show, bs[show])])
 
     return bs, comments
@@ -977,13 +985,13 @@ def main():
             V_GROW: ["성장량", 7], V_MYSPD: ["내속도", 6], V_FISHSPD: ["적속도", 1.6],
             V_SPAWNGAP: ["스폰간격", 0.7], V_BIGRATE: ["큰물고기비율", 0.2],
             V_MIDRATE: ["중간물고기비율", 0.3], V_EATRATIO: ["먹기기준", 0.9],
-            V_CAP: ["최대물고기", 16], V_STARTSZ: ["시작크기", 60], V_GOALSZ: ["목표크기", 110],
-            V_SIZES: ["작은크기", 35], V_SIZEM: ["중간크기", 65], V_SIZEL: ["큰크기", 100],
+            V_CAP: ["최대물고기", 16], V_STARTSZ: ["시작크기", 60], V_DISPCAP: ["표시크기상한", 150],
+            V_SIZES: ["작은배율", 0.6], V_SIZEM: ["중간배율", 0.95], V_SIZEL: ["큰배율", 1.35],
             V_SCOREPER: ["점수당먹기", 1],
-            # 진행 7
+            # 진행 8
             V_STATE: ["게임상태", 1], V_SCORE: ["점수", 0], V_MYSIZE: ["내크기", 60],
             V_ALIVE: ["물고기수", 0], V_TOUCHSZ: ["접촉물고기크기", 0],
-            V_POPX: ["뽁X", 0], V_POPY: ["뽁Y", 0],
+            V_POPX: ["뽁X", 0], V_POPY: ["뽁Y", 0], V_SURVIVE: ["생존시간", 0],
         },
         "lists": {},
         "broadcasts": {BR_START: "게임시작", BR_POP: "뽁생성"},
@@ -1075,18 +1083,19 @@ def main():
 
     # ---- 모니터: 내크기 / 목표크기 / 점수 (튜닝 변수는 숨김) ----
     monitors = [
+        # 엔들리스 진행 지표: 내크기(계속 성장) · 점수(계속 오름). 튜닝 변수는 숨김.
         {"id": V_MYSIZE, "mode": "default", "opcode": "data_variable",
          "params": {"VARIABLE": "내크기"}, "spriteName": None,
          "value": 60, "width": 0, "height": 0, "x": 5, "y": 5,
-         "visible": True, "sliderMin": 0, "sliderMax": 200, "isDiscrete": True},
-        {"id": V_GOALSZ, "mode": "default", "opcode": "data_variable",
-         "params": {"VARIABLE": "목표크기"}, "spriteName": None,
-         "value": 110, "width": 0, "height": 0, "x": 5, "y": 35,
-         "visible": True, "sliderMin": 0, "sliderMax": 300, "isDiscrete": True},
+         "visible": True, "sliderMin": 0, "sliderMax": 500, "isDiscrete": True},
         {"id": V_SCORE, "mode": "default", "opcode": "data_variable",
          "params": {"VARIABLE": "점수"}, "spriteName": None,
+         "value": 0, "width": 0, "height": 0, "x": 5, "y": 35,
+         "visible": True, "sliderMin": 0, "sliderMax": 999, "isDiscrete": True},
+        {"id": V_SURVIVE, "mode": "default", "opcode": "data_variable",
+         "params": {"VARIABLE": "생존시간"}, "spriteName": None,
          "value": 0, "width": 0, "height": 0, "x": 5, "y": 65,
-         "visible": True, "sliderMin": 0, "sliderMax": 100, "isDiscrete": True},
+         "visible": True, "sliderMin": 0, "sliderMax": 999, "isDiscrete": True},
     ]
 
     project = {
