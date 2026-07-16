@@ -13,7 +13,7 @@ ASSETS = os.path.join(HERE, "assets")
 WORK   = os.path.join(HERE, ".build")
 OUTPUT = os.path.join(HERE, "로봇_슈터.sb3")
 
-SND_RATE = 22050  # 조금 더 또렷한 메카 톤
+SND_RATE = 22050  # 대포·포격 톤 (중저음 + 잔향) — v2 극단 튜닝
 
 def _wav_bytes(samples, rate=SND_RATE):
     pcm = b"".join(struct.pack("<h", max(-32767, min(32767, int(s * 32767)))) for s in samples)
@@ -25,163 +25,223 @@ def _wav_bytes(samples, rate=SND_RATE):
 def _clamp(s):
     return max(-1.0, min(1.0, s))
 
+def _soft_clip(s, drive=1.8):
+    """강한 소프트 클립 — 포성 피크 펀치 + 약간의 디스토션."""
+    return math.tanh(s * drive)
+
+def _cannon_layers(t, rng, lp_state, *,
+                   sub_hz=22, boom_hz=36, crack_ms=0.035,
+                   noise_a=0.85, rumble_a=0.9):
+    """대포 공통 레이어: 강한 crack + 초저음 붐 + 긴 잔향.
+    YouTube 'Cannon sound' 방향 — 짧고 가벼운 삑 금지."""
+    white = rng.random() * 2 - 1
+    # 매우 낮은 LPF 노이즈 (연기·잔향) — 천천히 따라감
+    lp_state[0] = lp_state[0] + 0.10 * (white - lp_state[0])
+    # 중역 노이즈 (균열용)
+    if len(lp_state) < 2:
+        lp_state.append(0.0)
+    lp_state[1] = lp_state[1] + 0.45 * (white - lp_state[1])
+    # 초반 균열 — 길고 거친 공기 충격 (대포의 '쩍')
+    crack_env = math.exp(-t / max(1e-4, crack_ms)) * (1 - math.exp(-t * 250))
+    crack = (white * 0.65 + lp_state[1] * 0.55) * crack_env
+    # 본체 초저음 (포구 붐) — 주파수 급강하
+    f_sub = sub_hz + 70 * math.exp(-t * 6.5)
+    f_boom = boom_hz + 120 * math.exp(-t * 7.5)
+    sub = math.sin(2 * math.pi * f_sub * t)
+    boom = (math.sin(2 * math.pi * f_boom * t)
+            + 0.5 * math.sin(2 * math.pi * f_boom * 1.5 * t)
+            + 0.25 * math.sin(2 * math.pi * f_boom * 2.3 * t))
+    # 중역 통 울림
+    shell = math.sin(2 * math.pi * (85 + 200 * math.exp(-t * 10)) * t) * math.exp(-t * 7)
+    rumble = lp_state[0]
+    return (crack * 0.85
+            + sub * 0.75
+            + boom * 0.9
+            + shell * 0.35
+            + rumble * noise_a * rumble_a)
+
 def synth_missile(rate=SND_RATE):
-    """미사일 — 중저음 추진 (장난감 뿅 금지, 산업용 로켓)."""
-    N = int(rate * 0.11); out = []
+    """미사일 — 소구경 대포 발사 (연사여도 포성으로 들리게)."""
+    N = int(rate * 0.22); out = []
     rng = random.Random(91001)
-    lp = 0.0
+    lp = [0.0, 0.0]
     for i in range(N):
         t = i / rate
-        env = math.exp(-t * 14) * (1 - math.exp(-t * 70))
-        white = rng.random() * 2 - 1
-        lp = lp + 0.42 * (white - lp)
-        f = 55 + 140 * math.exp(-t * 11)
-        body = math.sin(2 * math.pi * f * t) + 0.4 * math.sin(2 * math.pi * f * 2.1 * t)
-        grit = lp * 0.55
-        out.append(_clamp((body * 0.7 + grit) * env * 0.72))
+        env = math.exp(-t * 7.0) * (1 - math.exp(-t * 120))
+        body = _cannon_layers(t, rng, lp, sub_hz=28, boom_hz=48, crack_ms=0.028,
+                              noise_a=0.8, rumble_a=0.75)
+        thrust = lp[0] * 0.45 * math.exp(-t * 4.5)
+        s = _soft_clip((body + thrust) * env * 1.15, 2.0)
+        out.append(_clamp(s))
     return out
 
 def synth_laser(rate=SND_RATE):
-    """레이저 — 낮은 공업 빔 (고음 삑 제거)."""
-    N = int(rate * 0.10); out = []
+    """레이저 — 저음 에너지 캐논 (삑 제거, 킥 강조)."""
+    N = int(rate * 0.18); out = []
     phase = 0.0
+    rng = random.Random(91002)
+    lp = [0.0, 0.0]
     for i in range(N):
         t = i / rate
-        f = 520 * math.exp(-t * 14) + 90
+        env = math.exp(-t * 8.5) * (1 - math.exp(-t * 110))
+        kick = _cannon_layers(t, rng, lp, sub_hz=30, boom_hz=55, crack_ms=0.02,
+                              noise_a=0.55, rumble_a=0.55)
+        f = 140 * math.exp(-t * 6) + 40
         phase += 2 * math.pi * f / rate
         saw = (phase / (2 * math.pi) % 1) * 2 - 1
         sine = math.sin(phase)
-        env = math.exp(-t * 16) * (1 - math.exp(-t * 80))
-        sub = 0.4 * math.sin(2 * math.pi * 70 * t)
-        out.append(_clamp((saw * 0.35 + sine * 0.4 + sub) * env * 0.58))
+        sub = 0.7 * math.sin(2 * math.pi * 36 * t)
+        beam = saw * 0.2 + sine * 0.4 + sub
+        s = _soft_clip((kick * 0.85 + beam * 0.55) * env * 1.0, 1.7)
+        out.append(_clamp(s))
     return out
 
 def synth_mega(rate=SND_RATE):
-    """메가빔 — 중장비 빔 포 (장전 rumble → 발사)."""
-    N = int(rate * 0.32); out = []
+    """메가빔 — 주포 장전 → 초대형 캐논 (영상 대포에 가장 가깝게)."""
+    N = int(rate * 0.70); out = []
     phase = 0.0
     rng = random.Random(91003)
-    lp = 0.0
+    lp = [0.0, 0.0]
+    charge_t = 0.14
     for i in range(N):
         t = i / rate
-        if t < 0.10:
-            f = 60 + 180 * (t / 0.10)
-            env = 0.45 * (t / 0.10)
+        if t < charge_t:
+            u = t / charge_t
+            env = 0.4 + 0.6 * u
             white = rng.random() * 2 - 1
-            lp = lp + 0.3 * (white - lp)
-            s = math.sin(2 * math.pi * f * t) * 0.5 + lp * 0.5
+            lp[0] = lp[0] + 0.18 * (white - lp[0])
+            f = 20 + 70 * u
+            s = math.sin(2 * math.pi * f * t) * 0.65 + lp[0] * 0.8
+            s += 0.4 * math.sin(2 * math.pi * (14 + 30 * u) * t)
+            out.append(_clamp(_soft_clip(s * env * 0.75, 1.4)))
         else:
-            u = t - 0.10
-            f = 280 * math.exp(-u * 5) + 45
-            env = math.exp(-u * 7)
+            u = t - charge_t
+            env = math.exp(-u * 3.0) * (1 - math.exp(-u * 80))
+            body = _cannon_layers(u, rng, lp, sub_hz=18, boom_hz=30, crack_ms=0.04,
+                                  noise_a=0.9, rumble_a=1.0)
+            f = 120 * math.exp(-u * 3.2) + 24
             phase += 2 * math.pi * f / rate
-            white = rng.random() * 2 - 1
-            lp = lp + 0.25 * (white - lp)
-            s = math.sin(phase) * 0.45 + math.sin(phase * 1.5) * 0.25 + lp * 0.35
-            s += 0.45 * math.sin(2 * math.pi * 40 * t)
-        out.append(_clamp(s * env * 0.7))
+            beam = math.sin(phase) * 0.3 + math.sin(phase * 1.35) * 0.18
+            sub = 0.7 * math.sin(2 * math.pi * 22 * t)
+            tail = lp[0] * 0.6 * math.exp(-u * 2.0)
+            s = _soft_clip((body * 1.05 + beam + sub + tail) * env * 1.15, 2.1)
+            out.append(_clamp(s))
     return out
 
 def synth_boom(rate=SND_RATE):
-    """중폭발 — 산업 충격파."""
-    N = int(rate * 0.30); out = []
+    """중폭발 — 포탄 명중 (쿵— 잔향 길게)."""
+    N = int(rate * 0.55); out = []
     rng = random.Random(20260715)
-    lp = 0.0
+    lp = [0.0, 0.0]
     for i in range(N):
         t = i / rate
-        env = math.exp(-t * 7.5)
-        white = rng.random() * 2 - 1
-        lp = lp + 0.28 * (white - lp)
-        thump = math.sin(2 * math.pi * (36 + 55 * math.exp(-t * 12)) * t)
-        out.append(_clamp((lp * 0.55 + thump * 0.8) * env * 0.88))
+        env = math.exp(-t * 3.4) * (1 - math.exp(-t * 90))
+        body = _cannon_layers(t, rng, lp, sub_hz=20, boom_hz=34, crack_ms=0.035,
+                              noise_a=0.9, rumble_a=1.0)
+        tail = lp[0] * 0.65 * math.exp(-t * 2.2)
+        s = _soft_clip((body + tail) * env * 1.2, 2.0)
+        out.append(_clamp(s))
     return out
 
 def synth_bomb_boom(rate=SND_RATE):
-    """폭탄 폭발 — 장약 폭발 (길고 무겁게)."""
-    N = int(rate * 0.45); out = []
+    """폭탄 폭발 — 대형 장약 포격 (2차 충격 + 긴 잔향)."""
+    N = int(rate * 0.85); out = []
     rng = random.Random(77701)
-    lp = 0.0
+    lp = [0.0, 0.0]
     for i in range(N):
         t = i / rate
-        env = math.exp(-t * 5.2)
-        white = rng.random() * 2 - 1
-        lp = lp + 0.22 * (white - lp)
-        thump = math.sin(2 * math.pi * (28 + 75 * math.exp(-t * 9)) * t)
-        shock = math.sin(2 * math.pi * (90 + 200 * math.exp(-t * 15)) * t) * math.exp(-t * 12)
-        out.append(_clamp((lp * 0.6 + thump * 0.85 + shock * 0.2) * env * 0.92))
+        env = math.exp(-t * 2.5) * (1 - math.exp(-t * 80))
+        body = _cannon_layers(t, rng, lp, sub_hz=16, boom_hz=28, crack_ms=0.045,
+                              noise_a=0.95, rumble_a=1.1)
+        t2 = max(0.0, t - 0.09)
+        second = 0.0
+        if t2 > 0:
+            second = math.sin(2 * math.pi * (32 + 55 * math.exp(-t2 * 8)) * t2)
+            second *= math.exp(-t2 * 5.5) * 0.6
+        shock = math.sin(2 * math.pi * (55 + 200 * math.exp(-t * 10)) * t) * math.exp(-t * 11)
+        tail = lp[0] * 0.75 * math.exp(-t * 1.8)
+        s = _soft_clip((body + second + shock * 0.35 + tail) * env * 1.2, 2.2)
+        out.append(_clamp(s))
     return out
 
 def synth_hurt(rate=SND_RATE):
-    """피격 — 장갑 충격 (비프 알람 제거)."""
-    N = int(rate * 0.15); out = []
+    """피격 — 중장갑 충격 (둔탁 + 저음 킥)."""
+    N = int(rate * 0.20); out = []
     rng = random.Random(44002)
-    lp = 0.0
+    lp = [0.0, 0.0]
     for i in range(N):
         t = i / rate
-        env = math.exp(-t * 12)
+        env = math.exp(-t * 7.5) * (1 - math.exp(-t * 130))
         white = rng.random() * 2 - 1
-        lp = lp + 0.5 * (white - lp)
-        body = math.sin(2 * math.pi * (70 + 40 * math.exp(-t * 18)) * t)
-        out.append(_clamp((lp * 0.45 + body * 0.7) * env * 0.7))
+        lp[0] = lp[0] + 0.28 * (white - lp[0])
+        body = math.sin(2 * math.pi * (36 + 60 * math.exp(-t * 12)) * t)
+        clang = math.sin(2 * math.pi * (120 + 90 * math.exp(-t * 16)) * t) * math.exp(-t * 12)
+        s = _soft_clip((lp[0] * 0.6 + body * 0.85 + clang * 0.4) * env * 1.0, 1.7)
+        out.append(_clamp(s))
     return out
 
 def synth_boss_fire(rate=SND_RATE):
-    """보스 캐논 — 함포급 저음."""
-    N = int(rate * 0.16); out = []
+    """보스 캐논 — 함포급 대포 (YouTube cannon 레퍼런스)."""
+    N = int(rate * 0.45); out = []
     rng = random.Random(33002)
-    lp = 0.0
+    lp = [0.0, 0.0]
     for i in range(N):
         t = i / rate
-        env = math.exp(-t * 12) * (1 - math.exp(-t * 55))
-        white = rng.random() * 2 - 1
-        lp = lp + 0.38 * (white - lp)
-        f = 42 + 110 * math.exp(-t * 15)
-        body = math.sin(2 * math.pi * f * t) + 0.45 * math.sin(2 * math.pi * f * 1.8 * t)
-        out.append(_clamp((lp * 0.4 + body * 0.75) * env * 0.8))
+        env = math.exp(-t * 4.0) * (1 - math.exp(-t * 90))
+        body = _cannon_layers(t, rng, lp, sub_hz=18, boom_hz=32, crack_ms=0.04,
+                              noise_a=0.9, rumble_a=1.0)
+        muzzle = math.sin(2 * math.pi * (70 + 150 * math.exp(-t * 12)) * t) * math.exp(-t * 9)
+        tail = lp[0] * 0.6 * math.exp(-t * 2.5)
+        s = _soft_clip((body * 1.1 + muzzle * 0.45 + tail) * env * 1.2, 2.2)
+        out.append(_clamp(s))
     return out
 
 def synth_explode(rate=SND_RATE):
-    """격파 — 장갑 파열."""
-    N = int(rate * 0.26); out = []
+    """격파 — 포탄 폭발 + 장갑 파열."""
+    N = int(rate * 0.48); out = []
     rng = random.Random(55003)
-    lp = 0.0
+    lp = [0.0, 0.0]
     for i in range(N):
         t = i / rate
-        env = math.exp(-t * 8.5)
-        white = rng.random() * 2 - 1
-        lp = lp + 0.32 * (white - lp)
-        thump = math.sin(2 * math.pi * (48 + 80 * math.exp(-t * 14)) * t)
-        out.append(_clamp((lp * 0.55 + thump * 0.7) * env * 0.85))
+        env = math.exp(-t * 4.0) * (1 - math.exp(-t * 95))
+        body = _cannon_layers(t, rng, lp, sub_hz=22, boom_hz=38, crack_ms=0.03,
+                              noise_a=0.85, rumble_a=0.9)
+        debris = lp[0] * math.exp(-t * 6) * 0.45
+        s = _soft_clip((body + debris) * env * 1.15, 2.0)
+        out.append(_clamp(s))
     return out
 
 def synth_bomb_throw(rate=SND_RATE):
-    """폭탄 투척 — 기계 투출 (휘익 장난감 톤 제거)."""
-    N = int(rate * 0.11); out = []
+    """폭탄 투척 — 기계식 투출."""
+    N = int(rate * 0.12); out = []
     rng = random.Random(66004)
-    lp = 0.0
+    lp = [0.0]
     for i in range(N):
         t = i / rate
-        env = math.exp(-t * 12) * (1 - math.exp(-t * 50))
+        env = math.exp(-t * 11) * (1 - math.exp(-t * 70))
         white = rng.random() * 2 - 1
-        lp = lp + 0.45 * (white - lp)
-        f = 100 + 90 * (t / 0.11)
+        lp[0] = lp[0] + 0.4 * (white - lp[0])
+        f = 70 + 50 * (t / 0.12)
         body = math.sin(2 * math.pi * f * t)
-        out.append(_clamp((body * 0.45 + lp * 0.5) * env * 0.5))
+        air = lp[0] * 0.55
+        s = _soft_clip((body * 0.5 + air) * env * 0.65, 1.3)
+        out.append(_clamp(s))
     return out
 
 def synth_hit(rate=SND_RATE):
-    """피격 타격 — 중장갑 타격 (챙! 고음 제거, 둔탁)."""
-    N = int(rate * 0.08); out = []
+    """피격 타격 — 중장갑 타격 (짧은 포성 킥)."""
+    N = int(rate * 0.12); out = []
     rng = random.Random(88011)
-    lp = 0.0
+    lp = [0.0]
     for i in range(N):
         t = i / rate
-        env = math.exp(-t * 22) * (1 - math.exp(-t * 150))
+        env = math.exp(-t * 12) * (1 - math.exp(-t * 170))
         white = rng.random() * 2 - 1
-        lp = lp + 0.55 * (white - lp)
-        body = math.sin(2 * math.pi * (95 + 60 * math.exp(-t * 30)) * t)
-        mid = 0.35 * math.sin(2 * math.pi * (320 * math.exp(-t * 20)) * t)
-        out.append(_clamp((lp * 0.5 + body * 0.55 + mid) * env * 0.72))
+        lp[0] = lp[0] + 0.35 * (white - lp[0])
+        body = math.sin(2 * math.pi * (42 + 80 * math.exp(-t * 18)) * t)
+        mid = 0.35 * math.sin(2 * math.pi * (160 * math.exp(-t * 14)) * t)
+        s = _soft_clip((lp[0] * 0.65 + body * 0.8 + mid) * env * 1.0, 1.8)
+        out.append(_clamp(s))
     return out
 
 def synth_zap(rate=SND_RATE):
@@ -295,14 +355,15 @@ def _up_card_svg(key, title, sub, color):
   <text x="55" y="104" text-anchor="middle" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="11" opacity="0.9">{sub}</text>
 </svg>"""
 
-# 강화 풀 6종 (랜덤 3장 중 택1)
+# 강화 풀 7종 (랜덤 3장 중 택1)
 UP_DEFS = [
     (1, "공격력+", "데미지↑", "#C62828"),
     (2, "연사+", "발사간격↓", "#EF6C00"),
     (3, "여러발+", "미사일 수↑", "#6A1B9A"),
     (4, "관통+", "한 줄 청소", "#1565C0"),
-    (5, "레이저+", "보조무기", "#00838F"),
+    (5, "레이저+", "발사량↑", "#00838F"),
     (6, "스킬쿨-", "Z/X 빨리", "#2E7D32"),
+    (7, "스피드+", "이동↑", "#F9A825"),
 ]
 UP_CARD_SVGS = {n: _up_card_svg("?", t, s, c) for n, t, s, c in UP_DEFS}
 
@@ -405,6 +466,28 @@ def _hp_svg(n):
 
 HP_SVGS = [_hp_svg(n) for n in range(6)]
 
+BOSS_HP_SEGS = 20  # 세밀한 게이지 (데미지 체감)
+
+def _boss_hp_svg(n, segs=BOSS_HP_SEGS):
+    """보스 체력 게이지 0~segs (segs=풀)."""
+    fill_w = max(0, min(300, int(300 * n / segs)))
+    # 색: 풀=보라, 중=주황, 낮=빨강
+    if n <= segs * 0.3:
+        col = "#FF1744"
+    elif n <= segs * 0.6:
+        col = "#FF9100"
+    else:
+        col = "#CE93D8"
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="320" height="40" viewBox="0 0 320 40">
+  <rect x="1" y="1" width="318" height="38" rx="10" fill="#12001F" opacity="0.95" stroke="#E1BEE7" stroke-width="2.5"/>
+  <text x="12" y="15" fill="#E1BEE7" font-family="Arial, sans-serif" font-size="11" font-weight="bold">BOSS HP</text>
+  <rect x="10" y="20" width="300" height="14" rx="5" fill="#2A1040" stroke="#6A1B9A" stroke-width="1.5"/>
+  <rect x="10" y="20" width="{fill_w}" height="14" rx="5" fill="{col}"/>
+  <rect x="10" y="20" width="{fill_w}" height="5" rx="2" fill="#FFFFFF" opacity="0.28"/>
+</svg>"""
+
+BOSS_HP_SVGS = [_boss_hp_svg(n) for n in range(BOSS_HP_SEGS + 1)]
+
 HUD_PANEL_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="200" height="70" viewBox="0 0 200 70">
   <rect x="2" y="2" width="196" height="66" rx="10" fill="#0D1B2A" opacity="0.8" stroke="#37474F" stroke-width="2"/>
   <text x="14" y="28" fill="#90A4AE" font-family="Arial" font-size="12">WAVE</text>
@@ -495,8 +578,9 @@ V_SK2MAX = "varSk2Max59"
 V_PULSER = "varPulseR60"     # 폭탄 반경
 V_BOMBX = "varBombX68"       # 폭발 좌표 X
 V_BOMBY = "varBombY69"       # 폭발 좌표 Y
-V_CARD1, V_CARD2, V_CARD3 = "varCard61", "varCard62", "varCard63"  # 랜덤 강화 타입 1~6
+V_CARD1, V_CARD2, V_CARD3 = "varCard61", "varCard62", "varCard63"  # 랜덤 강화 타입 1~7
 V_PICK = "varPick64"         # 고른 슬롯 1~3
+V_BGMVOL = "varBgmVol70"     # 브금볼륨 % (효과음이 안 묻히게)
 V_UPTYPE = "varUpType65"     # 적용할 강화 타입
 V_HITDMG = "varHitDmg66"     # 이번 피격 데미지 (적 적용용)
 V_TMP2 = "varTmp267"
@@ -508,6 +592,9 @@ V_PMOVING = "varPMoving93"   # 이번 프레임 이동 여부 0/1
 V_BOSSMODE = "varBossMode71" # 1=보스 웨이브
 V_BOSSHP = "varBossHP72"     # 보스 현재 체력
 V_BOSSBASE = "varBossBase73" # 보스 기본 체력
+V_BOSSMAX = "varBossMax87"   # 보스 최대 체력 (게이지용)
+V_BOSSTIER = "varBossTier88" # 보스 티어 = 웨이브/5 (무기 강화)
+V_BARSEG = "varBossBar89"    # 보스 게이지 칸 수 (전용, 임시2 충돌 방지)
 V_BOSSDIR = "varBossDir74"   # 순찰 X 방향 ±1
 V_BOSSDIRY = "varBossDirY86" # 순찰 Y 방향 ±1
 V_BOSSCD = "varBossCd75"     # 보스 사격 쿨
@@ -526,6 +613,8 @@ V_LASISC, V_LASPIER, V_LASHITCD = "varLasIsC", "varLasPier", "varLasHitCD"
 V_MEGISC, V_MEGPIER, V_MEGHITCD = "varMegIsC", "varMegPier", "varMegHitCD"
 V_PULISC = "varPulIsC"
 V_EIS, V_EHP, V_ESPD, V_ETYPE, V_EHIT = "varEnemyIsC", "varEnemyHP", "varEnemySpd", "varEnemyType", "varEnemyHit"
+V_EDEAD = "varEnemyDead"  # 1=이미 사망 처리 (적수 이중감소 방지)
+V_BOSSDEAD = "varBossDead86"  # 1=보스 사망 처리 완료
 V_DMGISC = "varDmgIsC"
 
 BR_START, BR_AIM, BR_FIRE = "brStart01", "brAim02", "brFire03"
@@ -725,7 +814,7 @@ def build_stage_blocks():
     # 화력 시작값: 한 발씩, 여유 있는 간격
     add_set("공격력", V_ATK, 1)
     add_set("발사간격", V_FIREGAP, 0.55)
-    add_set("미사일속도", V_MISSPD, 10)
+    add_set("미사일속도", V_MISSPD, 18)  # 슝! 빠른 직진 (구 10)
     add_set("관통", V_PIERCE, 1)
     add_set("추가발사", V_MULTI, 1)
     add_set("이동속도", V_MOVE, 8)
@@ -749,6 +838,10 @@ def build_stage_blocks():
     add_set("폭탄쿨최대", V_SK2MAX, 10)
     add_set("폭탄반경", V_PULSER, 95)
     add_set("보스기본체력", V_BOSSBASE, 30)
+    add_set("보스최대체력", V_BOSSMAX, 1)
+    add_set("보스티어", V_BOSSTIER, 1)
+    add_set("보스가이지", V_BARSEG, 0)
+    add_set("브금볼륨", V_BGMVOL, 55)  # BGM % — 효과음(포성)이 안 묻히게
 
     maxhp = vrep("최대체력", V_MAXHP)
     seq.append((b_setvar(bs, "체력", V_HP, maxhp), None))
@@ -770,7 +863,8 @@ def build_stage_blocks():
         ("카드1", V_CARD1, 1), ("카드2", V_CARD2, 2), ("카드3", V_CARD3, 3),
         ("선택슬롯", V_PICK, 0), ("강화타입", V_UPTYPE, 0), ("피격데미지", V_HITDMG, 1),
         ("임시2", V_TMP2, 0), ("쿨고스트", V_CDGHOST, 0),
-        ("보스모드", V_BOSSMODE, 0), ("보스체력", V_BOSSHP, 0),
+        ("보스모드", V_BOSSMODE, 0), ("보스체력", V_BOSSHP, 0), ("보스사망", V_BOSSDEAD, 1),
+        ("보스최대체력", V_BOSSMAX, 1), ("보스티어", V_BOSSTIER, 1), ("보스가이지", V_BARSEG, 0),
         ("보스방향", V_BOSSDIR, 1), ("보스방향Y", V_BOSSDIRY, 1),
         ("보사쿨", V_BOSSCD, 0), ("보스피격쿨", V_BOSSHIT, 0),
         ("보스탄X", V_BBX, 0), ("보스탄Y", V_BBY, 0), ("보스탄방향", V_BBDIR, 90),
@@ -828,21 +922,20 @@ def build_stage_blocks():
     rr2 = gen(); bs[rr2] = mk("operator_random", inputs={"FROM": num(1), "TO": num(4)})
     if_h = b_if(bs, bool_op("operator_and", wge5, cmp_op("operator_equals", rr2, 1)),
                 b_setvar(bs, "적생성종류", V_SPTYPE, 3))
+    # 적수(ALIVE)는 클론 생성 시에만 +1 — 스폰 실패 시 유령 카운트 방지
     brs = b_broadcast(bs, "적스폰", BR_SPAWN)
     ch_s = b_changevar(bs, "스폰수", V_SPAWNED, 1)
-    ch_a = b_changevar(bs, "적수", V_ALIVE, 1)
     wt = b_wait_var(bs, "스폰간격", V_SPAWNGAP)
     chain([(s_edge, bs[s_edge]), (sx, bs[sx]), (sy, bs[sy]),
            (if1, bs[if1]), (if2, bs[if2]), (if3, bs[if3]), (if4, bs[if4]),
            (set_t1, bs[set_t1]), (if_mid, bs[if_mid]), (if_h, bs[if_h]),
-           (brs, bs[brs]), (ch_s, bs[ch_s]), (ch_a, bs[ch_a]), (wt, bs[wt])])
+           (brs, bs[brs]), (ch_s, bs[ch_s]), (wt, bs[wt])])
 
-    # 보스 스폰 (1회)
+    # 보스 스폰 (1회) — 적수는 보스 스크립트에서 +1
     br_boss = b_broadcast(bs, "보스스폰", BR_BOSS)
     set_ss1 = b_setvar(bs, "스폰수", V_SPAWNED, 1)
-    set_al1 = b_setvar(bs, "적수", V_ALIVE, 1)
     wt_b = b_wait(bs, 0.5)
-    chain([(br_boss, bs[br_boss]), (set_ss1, bs[set_ss1]), (set_al1, bs[set_al1]), (wt_b, bs[wt_b])])
+    chain([(br_boss, bs[br_boss]), (set_ss1, bs[set_ss1]), (wt_b, bs[wt_b])])
 
     is_boss_m = cmp_op("operator_equals", vrep("보스모드", V_BOSSMODE), 1)
     spawn_body = b_ifelse(bs, is_boss_m, br_boss, s_edge)
@@ -857,11 +950,13 @@ def build_stage_blocks():
     lt3 = cmp_op("operator_lt", vrep("스폰수", V_SPAWNED), vrep("웨이브목표", V_TARGET))
     not_lt = gen(); bs[not_lt] = mk("operator_not", inputs={"OPERAND": [2, lt3]})
     bs[lt3]["parent"] = not_lt
-    al0 = cmp_op("operator_equals", vrep("적수", V_ALIVE), 0)
-    can_clr = bool_op("operator_and", st1b, bool_op("operator_and", not_lt, al0))
+    # 적수<=0 이면 클리어 (이중 사망으로 음수가 돼도 진행)
+    al_done = cmp_op("operator_lt", vrep("적수", V_ALIVE), 1)
+    can_clr = bool_op("operator_and", st1b, bool_op("operator_and", not_lt, al_done))
     set_st2 = b_setvar(bs, "게임상태", V_STATE, 2)
+    set_al0 = b_setvar(bs, "적수", V_ALIVE, 0)  # 카운터 재동기화
     br_clr = b_broadcast(bs, "웨이브클리어", BR_WAVECLR)
-    chain([(set_st2, bs[set_st2]), (br_clr, bs[br_clr])])
+    chain([(set_st2, bs[set_st2]), (set_al0, bs[set_al0]), (br_clr, bs[br_clr])])
     if_clr = b_if(bs, can_clr, set_st2)
     chain([(ifelse_spawn, bs[ifelse_spawn]), (if_clr, bs[if_clr])])
     fr = b_forever(bs, ifelse_spawn)
@@ -878,6 +973,9 @@ def build_stage_blocks():
     nseq.append((b_changevar(bs, "웨이브", V_WAVE, 1), None)); nseq[-1] = (nseq[-1][0], bs[nseq[-1][0]])
     nseq.append((b_setvar(bs, "스폰수", V_SPAWNED, 0), None)); nseq[-1] = (nseq[-1][0], bs[nseq[-1][0]])
     nseq.append((b_setvar(bs, "적수", V_ALIVE, 0), None)); nseq[-1] = (nseq[-1][0], bs[nseq[-1][0]])
+    # 보스사망=1 유지(비보스 웨이브에서 유령 사망 처리 방지). 보스 스폰 시에만 0으로.
+    nseq.append((b_setvar(bs, "보스사망", V_BOSSDEAD, 1), None)); nseq[-1] = (nseq[-1][0], bs[nseq[-1][0]])
+    nseq.append((b_setvar(bs, "보스체력", V_BOSSHP, 0), None)); nseq[-1] = (nseq[-1][0], bs[nseq[-1][0]])
     # 웨이브 목표 / 보스모드 재계산
     mod2 = op("operator_mod", vrep("웨이브", V_WAVE), 5)
     is_b2 = cmp_op("operator_equals", mod2, 0)
@@ -894,6 +992,19 @@ def build_stage_blocks():
     nseq.append((ifelse_w, bs[ifelse_w]))
     nseq.append((b_setvar(bs, "게임상태", V_STATE, 1), None)); nseq[-1] = (nseq[-1][0], bs[nseq[-1][0]])
     chain(nseq)
+
+    # ===== BGM: 별도 병렬 깃발 스크립트 (게임 로직 hat 방해 없음) =====
+    # when green flag → set volume (브금볼륨)% → forever { play bgm until done }
+    hd = gen(); bs[hd] = mk("event_whenflagclicked", top=True, x=420, y=20)
+    bgmvol_r = vrep("브금볼륨", V_BGMVOL)
+    setvol = gen(); bs[setvol] = mk("sound_setvolumeto", inputs={"VOLUME": slot(bgmvol_r)})
+    bs[bgmvol_r]["parent"] = setvol
+    bgm_menu = gen(); bs[bgm_menu] = mk("sound_sounds_menu",
+        fields={"SOUND_MENU": ["bgm", None]}, shadow=True)
+    play_bgm = gen(); bs[play_bgm] = mk("sound_playuntildone", inputs={"SOUND_MENU": [1, bgm_menu]})
+    bs[bgm_menu]["parent"] = play_bgm
+    fe_bgm = b_forever(bs, play_bgm)
+    chain([(hd, bs[hd]), (setvol, bs[setvol]), (fe_bgm, bs[fe_bgm])])
     return bs
 
 # ============================================================
@@ -1251,8 +1362,8 @@ def build_missile_blocks():
     can = bool_op("operator_and", touch,
                   cmp_op("operator_equals", vrep("관통쿨", V_MISHITCD), 0))
     ch_p = b_changevar(bs, "남은관통", V_MISPIER, -1)
-    set_cd = b_setvar(bs, "관통쿨", V_MISHITCD, 5)
-    linger = b_wait(bs, 0.06)
+    set_cd = b_setvar(bs, "관통쿨", V_MISHITCD, 4)
+    linger = b_wait(bs, 0.05)
     del2 = gen(); bs[del2] = mk("control_delete_this_clone")
     chain([(linger, bs[linger]), (del2, bs[del2])])
     if_pd = b_if(bs, cmp_op("operator_lt", vrep("남은관통", V_MISPIER), 1), linger)
@@ -1261,7 +1372,7 @@ def build_missile_blocks():
 
     hcd_gt = cmp_op("operator_gt", vrep("관통쿨", V_MISHITCD), 0)
     if_hcd = b_if(bs, hcd_gt, b_changevar(bs, "관통쿨", V_MISHITCD, -1))
-    w = b_wait(bs, 0.015)
+    w = b_wait(bs, 0.01)  # 짧은 틱 → 체감 속도↑
     chain([(mv, bs[mv]), (if_edge, bs[if_edge]), (if_hit, bs[if_hit]), (if_hcd, bs[if_hcd]), (w, bs[w])])
 
     st0 = cmp_op("operator_equals", vrep("게임상태", V_STATE), 0)
@@ -1289,10 +1400,21 @@ def build_laser_blocks():
     hi = gen(); bs[hi] = mk("looks_hide")
     s0 = b_setvar(bs, "복제됨", V_LASISC, 0)
     chain([(h, bs[h]), (hi, bs[hi]), (s0, bs[s0])])
+    # 레이저발사 → 레이저레벨 개수만큼 부채꼴 클론 (레벨↑ = 발사량↑)
     hf = gen(); bs[hf] = mk("event_whenbroadcastreceived", top=True, x=20, y=120,
         fields={"BROADCAST_OPTION": ["레이저발사", BR_LASER]})
-    if_sp = b_if(bs, cmp_op("operator_equals", vrep("복제됨", V_LASISC), 0),
-                 b_create_clone(bs, "_myself_"))
+    is0 = cmp_op("operator_equals", vrep("복제됨", V_LASISC), 0)
+    set_i0 = b_setvar(bs, "발사i", V_FIREI, 0)
+    cc = b_create_clone(bs, "_myself_")
+    y0 = b_wait(bs, 0)
+    ch_i = b_changevar(bs, "발사i", V_FIREI, 1)
+    chain([(cc, bs[cc]), (y0, bs[y0]), (ch_i, bs[ch_i])])
+    multi_l = vrep("레이저레벨", V_LASER)
+    rep = gen(); bs[rep] = mk("control_repeat",
+        inputs={"TIMES": slot(multi_l), "SUBSTACK": [2, cc]})
+    bs[multi_l]["parent"] = rep; bs[cc]["parent"] = rep
+    chain([(set_i0, bs[set_i0]), (rep, bs[rep])])
+    if_sp = b_if(bs, is0, set_i0)
     chain([(hf, bs[hf]), (if_sp, bs[if_sp])])
     hs = gen(); bs[hs] = mk("control_start_as_clone", top=True, x=20, y=260)
     set_isc = b_setvar(bs, "복제됨", V_LASISC, 1)
@@ -1300,11 +1422,15 @@ def build_laser_blocks():
     set_pier = b_setvar(bs, "남은관통", V_LASPIER, p)
     set_hcd = b_setvar(bs, "관통쿨", V_LASHITCD, 0)
     go = b_gotoxy(bs, b_of(bs, "내로봇", "x position"), b_of(bs, "내로봇", "y position"))
-    # 조준점(발사 목표) 방향으로 직진 — atan 오류 방지
+    # 조준점 방향 + 부채꼴 스프레드
     pdir = b_pointtowards(bs, "조준점")
+    half = op("operator_divide", op("operator_subtract", vrep("레이저레벨", V_LASER), 1), 2)
+    spread = op("operator_multiply", op("operator_subtract", vrep("발사i", V_FIREI), half), 12)
+    turn = gen(); bs[turn] = mk("motion_turnright", inputs={"DEGREES": slot(spread)})
+    bs[spread]["parent"] = turn
     sz = gen(); bs[sz] = mk("looks_setsizeto", inputs={"SIZE": num(50)})
     sh = gen(); bs[sh] = mk("looks_show")
-    mv = b_movesteps(bs, 14)
+    mv = b_movesteps(bs, 22)  # 레이저 직진 속도↑
     edge_m = gen(); bs[edge_m] = mk("sensing_touchingobjectmenu",
         fields={"TOUCHINGOBJECTMENU": ["_edge_", None]}, shadow=True)
     tc_e = gen(); bs[tc_e] = mk("sensing_touchingobject", inputs={"TOUCHINGOBJECTMENU": [1, edge_m]})
@@ -1314,15 +1440,15 @@ def build_laser_blocks():
     touch = b_touching(bs, "적로봇")
     can = bool_op("operator_and", touch, cmp_op("operator_equals", vrep("관통쿨", V_LASHITCD), 0))
     ch_p = b_changevar(bs, "남은관통", V_LASPIER, -1)
-    set_cd = b_setvar(bs, "관통쿨", V_LASHITCD, 4)
-    linger = b_wait(bs, 0.05); del2 = gen(); bs[del2] = mk("control_delete_this_clone")
+    set_cd = b_setvar(bs, "관통쿨", V_LASHITCD, 3)
+    linger = b_wait(bs, 0.04); del2 = gen(); bs[del2] = mk("control_delete_this_clone")
     chain([(linger, bs[linger]), (del2, bs[del2])])
     if_pd = b_if(bs, cmp_op("operator_lt", vrep("남은관통", V_LASPIER), 1), linger)
     chain([(ch_p, bs[ch_p]), (set_cd, bs[set_cd]), (if_pd, bs[if_pd])])
     if_hit = b_if(bs, can, ch_p)
     if_hcd = b_if(bs, cmp_op("operator_gt", vrep("관통쿨", V_LASHITCD), 0),
                   b_changevar(bs, "관통쿨", V_LASHITCD, -1))
-    w = b_wait(bs, 0.012)
+    w = b_wait(bs, 0.008)
     chain([(mv, bs[mv]), (if_edge, bs[if_edge]), (if_hit, bs[if_hit]), (if_hcd, bs[if_hcd]), (w, bs[w])])
     edge2 = gen(); bs[edge2] = mk("sensing_touchingobjectmenu",
         fields={"TOUCHINGOBJECTMENU": ["_edge_", None]}, shadow=True)
@@ -1334,7 +1460,7 @@ def build_laser_blocks():
     bs[stop2]["parent"] = ru; bs[mv]["parent"] = ru
     del_end = gen(); bs[del_end] = mk("control_delete_this_clone")
     chain([(hs, bs[hs]), (set_isc, bs[set_isc]), (set_pier, bs[set_pier]),
-           (set_hcd, bs[set_hcd]), (go, bs[go]), (pdir, bs[pdir]),
+           (set_hcd, bs[set_hcd]), (go, bs[go]), (pdir, bs[pdir]), (turn, bs[turn]),
            (sz, bs[sz]), (sh, bs[sh]), (ru, bs[ru]), (del_end, bs[del_end])])
     return bs
 
@@ -1384,7 +1510,7 @@ def build_mega_blocks():
     pdir = b_pointtowards(bs, "조준점")
     sz = gen(); bs[sz] = mk("looks_setsizeto", inputs={"SIZE": num(90)})
     sh = gen(); bs[sh] = mk("looks_show")
-    mv = b_movesteps(bs, 16)
+    mv = b_movesteps(bs, 26)  # 메가빔 고속 직진
     edge_m = gen(); bs[edge_m] = mk("sensing_touchingobjectmenu",
         fields={"TOUCHINGOBJECTMENU": ["_edge_", None]}, shadow=True)
     tc_e = gen(); bs[tc_e] = mk("sensing_touchingobject", inputs={"TOUCHINGOBJECTMENU": [1, edge_m]})
@@ -1405,7 +1531,7 @@ def build_mega_blocks():
     if_hit = b_if(bs, can, ch_p)
     if_hcd = b_if(bs, cmp_op("operator_gt", vrep("관통쿨", V_MEGHITCD), 0),
                   b_changevar(bs, "관통쿨", V_MEGHITCD, -1))
-    w = b_wait(bs, 0.012)
+    w = b_wait(bs, 0.008)
     chain([(mv, bs[mv]), (if_edge, bs[if_edge]), (if_hit, bs[if_hit]), (if_hcd, bs[if_hcd]), (w, bs[w])])
     edge2 = gen(); bs[edge2] = mk("sensing_touchingobjectmenu",
         fields={"TOUCHINGOBJECTMENU": ["_edge_", None]}, shadow=True)
@@ -1449,12 +1575,12 @@ def build_pulse_blocks():
     sh = gen(); bs[sh] = mk("looks_show")
     front = gen(); bs[front] = mk("looks_gotofrontback", fields={"FRONT_BACK": ["front", None]})
     throw_snd = b_sound(bs, "throw")
-    # 날아가기 (약 0.45초)
-    mv = b_movesteps(bs, 11)
-    ww = b_wait(bs, 0.03)
+    # 날아가기 — 더 빠르게 투척 (슝 → 펑)
+    mv = b_movesteps(bs, 16)
+    ww = b_wait(bs, 0.02)
     chain([(mv, bs[mv]), (ww, bs[ww])])
     fly = gen(); bs[fly] = mk("control_repeat",
-        inputs={"TIMES": num(15), "SUBSTACK": [2, mv]})
+        inputs={"TIMES": num(12), "SUBSTACK": [2, mv]})
     bs[mv]["parent"] = fly
     # 폭발 좌표 기록
     xp3 = gen(); bs[xp3] = mk("motion_xposition")
@@ -1598,6 +1724,66 @@ def build_hud_text_blocks():
     chain([(hb, bs[hb]), (fr, bs[fr])])
     return bs
 
+def build_boss_hp_blocks():
+    """보스 체력 게이지 — 하단 중앙(스킬 아이콘 위), 0~20칸, 전용 변수."""
+    bs = {}
+    vrep, op, cmp_op, bool_op = make_helpers(bs)
+    # 하단: 점수/하트 말풍선에 안 가림, 스킬 아이콘(y=-155) 바로 위
+    h = gen(); bs[h] = mk("event_whenflagclicked", top=True, x=20, y=20)
+    g = b_gotoxy(bs, 0, -118)
+    sz = gen(); bs[sz] = mk("looks_setsizeto", inputs={"SIZE": num(100)})
+    hi = gen(); bs[hi] = mk("looks_hide")
+    front = gen(); bs[front] = mk("looks_gotofrontback", fields={"FRONT_BACK": ["front", None]})
+    chain([(h, bs[h]), (g, bs[g]), (sz, bs[sz]), (front, bs[front]), (hi, bs[hi])])
+
+    hb = gen(); bs[hb] = mk("event_whenbroadcastreceived", top=True, x=20, y=160,
+        fields={"BROADCAST_OPTION": ["게임시작", BR_START]})
+    # show if 보스모드=1 and 보스체력>0 and 게임중
+    show_ok = bool_op("operator_and",
+        bool_op("operator_and",
+            cmp_op("operator_equals", vrep("보스모드", V_BOSSMODE), 1),
+            cmp_op("operator_gt", vrep("보스체력", V_BOSSHP), 0)),
+        cmp_op("operator_equals", vrep("게임상태", V_STATE), 1))
+    sh = gen(); bs[sh] = mk("looks_show")
+    hi2 = gen(); bs[hi2] = mk("looks_hide")
+    # 칸 = floor(보스체력 / 보스최대 * 20) clamp 0..20  (전용 보스가이지 — 임시2 충돌 금지)
+    ratio = op("operator_divide", vrep("보스체력", V_BOSSHP), vrep("보스최대체력", V_BOSSMAX))
+    raw = op("operator_multiply", ratio, BOSS_HP_SEGS)
+    fl = gen(); bs[fl] = mk("operator_mathop",
+        inputs={"NUM": slot(raw)}, fields={"OPERATOR": ["floor", None]})
+    bs[raw]["parent"] = fl
+    set_t = b_setvar(bs, "보스가이지", V_BARSEG, fl)
+    if_hi = b_if(bs, cmp_op("operator_gt", vrep("보스가이지", V_BARSEG), BOSS_HP_SEGS),
+                 b_setvar(bs, "보스가이지", V_BARSEG, BOSS_HP_SEGS))
+    if_lo = b_if(bs, cmp_op("operator_lt", vrep("보스가이지", V_BARSEG), 0),
+                 b_setvar(bs, "보스가이지", V_BARSEG, 0))
+    # HP>0 이면 최소 1칸 표시 (살짝 맞아도 바로 줄어든 느낌)
+    if_min1 = b_if(bs, bool_op("operator_and",
+        cmp_op("operator_gt", vrep("보스체력", V_BOSSHP), 0),
+        cmp_op("operator_equals", vrep("보스가이지", V_BARSEG), 0)),
+        b_setvar(bs, "보스가이지", V_BARSEG, 1))
+    def text_slot(s):
+        return [1, [10, str(s)]]
+    tv = vrep("보스가이지", V_BARSEG)
+    join = gen()
+    bs[join] = mk("operator_join",
+        inputs={"STRING1": text_slot("bar"), "STRING2": slot(tv)})
+    bs[tv]["parent"] = join
+    sw = gen(); bs[sw] = mk("looks_switchcostumeto",
+        inputs={"COSTUME": [3, join, [10, f"bar{BOSS_HP_SEGS}"]]})
+    bs[join]["parent"] = sw
+    # 매 프레임 맨 앞 + 위치 고정
+    front2 = gen(); bs[front2] = mk("looks_gotofrontback", fields={"FRONT_BACK": ["front", None]})
+    g2 = b_gotoxy(bs, 0, -118)
+    chain([(set_t, bs[set_t]), (if_hi, bs[if_hi]), (if_lo, bs[if_lo]), (if_min1, bs[if_min1]),
+           (sw, bs[sw]), (g2, bs[g2]), (front2, bs[front2]), (sh, bs[sh])])
+    body = b_ifelse(bs, show_ok, set_t, hi2)
+    wt = b_wait(bs, 0.04)  # 더 자주 갱신 → 닳는 느낌
+    chain([(body, bs[body]), (wt, bs[wt])])
+    fr = b_forever(bs, body)
+    chain([(hb, bs[hb]), (fr, bs[fr])])
+    return bs
+
 # ============================================================
 #  보스 (5의 배수 웨이브) + 보스탄
 # ============================================================
@@ -1613,32 +1799,43 @@ def build_boss_blocks():
 
     hs = gen(); bs[hs] = mk("event_whenbroadcastreceived", top=True, x=20, y=140,
         fields={"BROADCAST_OPTION": ["보스스폰", BR_BOSS]})
-    hp = op("operator_add", vrep("보스기본체력", V_BOSSBASE),
-            op("operator_multiply", vrep("웨이브", V_WAVE), 8))
-    set_hp = b_setvar(bs, "보스체력", V_BOSSHP, hp)
+    # 티어 = floor(웨이브/5) → 1회차(W5)=1, 2회차(W10)=2 …
+    tier_raw = op("operator_divide", vrep("웨이브", V_WAVE), 5)
+    tier_fl = gen(); bs[tier_fl] = mk("operator_mathop",
+        inputs={"NUM": slot(tier_raw)}, fields={"OPERATOR": ["floor", None]})
+    bs[tier_raw]["parent"] = tier_fl
+    set_tier = b_setvar(bs, "보스티어", V_BOSSTIER, tier_fl)
+    # 체력: 기본 + 웨이브*8 + 티어*12 (후반 보스 더 단단)
+    hp = op("operator_add",
+            op("operator_add", vrep("보스기본체력", V_BOSSBASE),
+               op("operator_multiply", vrep("웨이브", V_WAVE), 8)),
+            op("operator_multiply", vrep("보스티어", V_BOSSTIER), 12))
+    set_max = b_setvar(bs, "보스최대체력", V_BOSSMAX, hp)
+    set_hp = b_setvar(bs, "보스체력", V_BOSSHP, vrep("보스최대체력", V_BOSSMAX))
+    set_bd0 = b_setvar(bs, "보스사망", V_BOSSDEAD, 0)
+    ch_al_sp = b_changevar(bs, "적수", V_ALIVE, 1)  # 살아 있는 보스 1기
     set_dir = b_setvar(bs, "보스방향", V_BOSSDIR, 1)
     set_diry = b_setvar(bs, "보스방향Y", V_BOSSDIRY, 1)
     set_cd = b_setvar(bs, "보사쿨", V_BOSSCD, 0)
     set_hit = b_setvar(bs, "보스피격쿨", V_BOSSHIT, 0)
     set_vol = b_setvar(bs, "보볼리", V_BOSSVOLLEY, 0)
-    # 보스탄수 = min(7, 1 + floor(웨이브/5))  → 5웨이브2발, 10웨이브3발…
-    # Scratch: 웨이브/5 를 정수처럼 쓰되 최소 1
-    tier = op("operator_divide", vrep("웨이브", V_WAVE), 5)
-    multi0 = op("operator_add", 1, tier)
+    # 부채 탄수 = min(12, 1 + tier*2)  → T1:3, T2:5, T3:7, T4:9, T5:11, T6:12
+    multi0 = op("operator_add", 1, op("operator_multiply", vrep("보스티어", V_BOSSTIER), 2))
     set_multi = b_setvar(bs, "보스탄수", V_BOSSMULTI, multi0)
-    # clamp multi to int-ish: if > 7 set 7
-    if_mhi = b_if(bs, cmp_op("operator_gt", vrep("보스탄수", V_BOSSMULTI), 7),
-                  b_setvar(bs, "보스탄수", V_BOSSMULTI, 7))
-    # 간격 = max(0.28, 0.80 - tier*0.08)
-    gap0 = op("operator_subtract", 0.80, op("operator_multiply", tier, 0.08))
+    if_mhi = b_if(bs, cmp_op("operator_gt", vrep("보스탄수", V_BOSSMULTI), 12),
+                  b_setvar(bs, "보스탄수", V_BOSSMULTI, 12))
+    # 간격 = max(0.14, 0.90 - tier*0.12)  → T1:0.78, T2:0.66, T3:0.54, T4:0.42, T5:0.30…
+    gap0 = op("operator_subtract", 0.90, op("operator_multiply", vrep("보스티어", V_BOSSTIER), 0.12))
     set_gap = b_setvar(bs, "보스간격", V_BOSSGAP, gap0)
-    if_glo = b_if(bs, cmp_op("operator_lt", vrep("보스간격", V_BOSSGAP), 0.28),
-                  b_setvar(bs, "보스간격", V_BOSSGAP, 0.28))
+    if_glo = b_if(bs, cmp_op("operator_lt", vrep("보스간격", V_BOSSGAP), 0.14),
+                  b_setvar(bs, "보스간격", V_BOSSGAP, 0.14))
     go = b_gotoxy(bs, 0, 130)
     sz = gen(); bs[sz] = mk("looks_setsizeto", inputs={"SIZE": num(70)})
     sh = gen(); bs[sh] = mk("looks_show")
     front = gen(); bs[front] = mk("looks_gotofrontback", fields={"FRONT_BACK": ["front", None]})
-    chain([(hs, bs[hs]), (set_hp, bs[set_hp]), (set_dir, bs[set_dir]), (set_diry, bs[set_diry]),
+    chain([(hs, bs[hs]), (set_tier, bs[set_tier]), (set_max, bs[set_max]), (set_hp, bs[set_hp]),
+           (set_bd0, bs[set_bd0]), (ch_al_sp, bs[ch_al_sp]),
+           (set_dir, bs[set_dir]), (set_diry, bs[set_diry]),
            (set_cd, bs[set_cd]),
            (set_hit, bs[set_hit]), (set_vol, bs[set_vol]),
            (set_multi, bs[set_multi]), (if_mhi, bs[if_mhi]),
@@ -1709,9 +1906,8 @@ def build_boss_blocks():
            (set_in_x, bs[set_in_x]), (set_in_y, bs[set_in_y])])
     if_corner = b_if(bs, near_corner, do_pull_x)
 
-    # 이동속도: 2.8 + tier*0.35
-    spd = op("operator_add", 2.8, op("operator_multiply",
-              op("operator_divide", vrep("웨이브", V_WAVE), 5), 0.35))
+    # 이동속도: 2.5 + tier*0.55 (후반 보스 더 기동성)
+    spd = op("operator_add", 2.5, op("operator_multiply", vrep("보스티어", V_BOSSTIER), 0.55))
     step_x = op("operator_multiply", vrep("보스방향", V_BOSSDIR), spd)
     chx = gen(); bs[chx] = mk("motion_changexby", inputs={"DX": slot(step_x)})
     bs[step_x]["parent"] = chx
@@ -1720,75 +1916,183 @@ def build_boss_blocks():
     chy = gen(); bs[chy] = mk("motion_changeyby", inputs={"DY": slot(step_y)})
     bs[step_y]["parent"] = chy
 
-    # ---- 사격: 일반 부채꼴 / 필살기(전방위) ----
+    # ---- 사격: 회차(티어)별 무기 다양화·강화 ----
+    # T1: 부채 / 더블부채 / 링12
+    # T2: +산탄 / 스파이럴
+    # T3: +십자 / 링16
+    # T4: +플라워(링+부채) / 링20
+    # T5+: 전부 더 자주 + 저체력 난사
     cd_ok = cmp_op("operator_lt", vrep("보사쿨", V_BOSSCD), 0.05)
     bx = gen(); bs[bx] = mk("motion_xposition")
     set_bx = b_setvar(bs, "보스탄X", V_BBX, bx)
     by = gen(); bs[by] = mk("motion_yposition")
     set_by = b_setvar(bs, "보스탄Y", V_BBY, by)
     snd_bf = b_sound(bs, "boss_fire")
-    # 플레이어 방향 기준
     pt_pl = b_pointtowards(bs, "내로봇")
-    # base dir = motion_direction
     base_d = gen(); bs[base_d] = mk("motion_direction")
-    set_base = b_setvar(bs, "임시2", V_TMP2, base_d)  # 기준 방향 저장
+    set_base = b_setvar(bs, "임시2", V_TMP2, base_d)  # 플레이어 방향
 
-    # 일반: 부채꼴 multi발
-    set_fi0 = b_setvar(bs, "보스발사i", V_BOSSFI, 0)
-    # dir = 기준 + (i - (multi-1)/2) * 14
-    fi = vrep("보스발사i", V_BOSSFI)
-    half = op("operator_divide", op("operator_subtract", vrep("보스탄수", V_BOSSMULTI), 1), 2)
-    off = op("operator_multiply", op("operator_subtract", fi, half), 14)
-    fdir = op("operator_add", vrep("임시2", V_TMP2), off)
-    set_bdir = b_setvar(bs, "보스탄방향", V_BBDIR, fdir)
-    br_f = b_broadcast(bs, "보스사격", BR_BFIRE)
-    y0 = b_wait(bs, 0)
-    ch_fi = b_changevar(bs, "보스발사i", V_BOSSFI, 1)
-    chain([(set_bdir, bs[set_bdir]), (br_f, bs[br_f]), (y0, bs[y0]), (ch_fi, bs[ch_fi])])
-    multi_v = vrep("보스탄수", V_BOSSMULTI)
-    rep_n = gen(); bs[rep_n] = mk("control_repeat",
-        inputs={"TIMES": slot(multi_v), "SUBSTACK": [2, set_bdir]})
-    bs[multi_v]["parent"] = rep_n; bs[set_bdir]["parent"] = rep_n
-    chain([(set_fi0, bs[set_fi0]), (rep_n, bs[rep_n])])
+    def make_fan(spread_deg, multi_n=None, multi_var=None):
+        """플레이어 방향 기준 부채꼴."""
+        set_fi = b_setvar(bs, "보스발사i", V_BOSSFI, 0)
+        if multi_var is not None:
+            m_name, m_vid = multi_var
+            m_half = vrep(m_name, m_vid)
+            m_times = vrep(m_name, m_vid)
+            half = op("operator_divide", op("operator_subtract", m_half, 1), 2)
+            times_slot = slot(m_times)
+            times_parent = m_times
+        else:
+            half = op("operator_divide", op("operator_subtract", multi_n, 1), 2)
+            times_slot = num(multi_n)
+            times_parent = None
+        fi = vrep("보스발사i", V_BOSSFI)
+        off = op("operator_multiply", op("operator_subtract", fi, half), spread_deg)
+        fdir = op("operator_add", vrep("임시2", V_TMP2), off)
+        set_bdir = b_setvar(bs, "보스탄방향", V_BBDIR, fdir)
+        br_f = b_broadcast(bs, "보스사격", BR_BFIRE)
+        y0 = b_wait(bs, 0)
+        ch_fi = b_changevar(bs, "보스발사i", V_BOSSFI, 1)
+        chain([(set_bdir, bs[set_bdir]), (br_f, bs[br_f]), (y0, bs[y0]), (ch_fi, bs[ch_fi])])
+        rep = gen(); bs[rep] = mk("control_repeat",
+            inputs={"TIMES": times_slot, "SUBSTACK": [2, set_bdir]})
+        if times_parent is not None:
+            bs[times_parent]["parent"] = rep
+        bs[set_bdir]["parent"] = rep
+        chain([(set_fi, bs[set_fi]), (rep, bs[rep])])
+        return set_fi
 
-    # 필살기: 12방향 전방위 (웨이브>=10 이고 보볼리%5==0)
-    set_fi0s = b_setvar(bs, "보스발사i", V_BOSSFI, 0)
-    # dir = i * 30
-    fi2 = vrep("보스발사i", V_BOSSFI)
-    fdir2 = op("operator_multiply", fi2, 30)
-    set_bdir2 = b_setvar(bs, "보스탄방향", V_BBDIR, fdir2)
-    br_f2 = b_broadcast(bs, "보스사격", BR_BFIRE)
-    y0s = b_wait(bs, 0)
-    ch_fi2 = b_changevar(bs, "보스발사i", V_BOSSFI, 1)
-    chain([(set_bdir2, bs[set_bdir2]), (br_f2, bs[br_f2]), (y0s, bs[y0s]), (ch_fi2, bs[ch_fi2])])
-    rep_s = gen(); bs[rep_s] = mk("control_repeat",
-        inputs={"TIMES": num(12), "SUBSTACK": [2, set_bdir2]})
-    bs[set_bdir2]["parent"] = rep_s
-    chain([(set_fi0s, bs[set_fi0s]), (rep_s, bs[rep_s])])
+    def make_ring(count, spin=False):
+        """전방위 링. spin=True 이면 보볼리만큼 회전(스파이럴 느낌)."""
+        set_fi = b_setvar(bs, "보스발사i", V_BOSSFI, 0)
+        step = 360 / count
+        fi = vrep("보스발사i", V_BOSSFI)
+        base_ang = op("operator_multiply", fi, step)
+        if spin:
+            # 매 볼리 17° 회전 → 회전 탄막
+            spin_off = op("operator_multiply", vrep("보볼리", V_BOSSVOLLEY), 17)
+            fdir = op("operator_add", base_ang, spin_off)
+        else:
+            fdir = base_ang
+        set_bdir = b_setvar(bs, "보스탄방향", V_BBDIR, fdir)
+        br_f = b_broadcast(bs, "보스사격", BR_BFIRE)
+        y0 = b_wait(bs, 0)
+        ch_fi = b_changevar(bs, "보스발사i", V_BOSSFI, 1)
+        chain([(set_bdir, bs[set_bdir]), (br_f, bs[br_f]), (y0, bs[y0]), (ch_fi, bs[ch_fi])])
+        rep = gen(); bs[rep] = mk("control_repeat",
+            inputs={"TIMES": num(count), "SUBSTACK": [2, set_bdir]})
+        bs[set_bdir]["parent"] = rep
+        chain([(set_fi, bs[set_fi]), (rep, bs[rep])])
+        return set_fi
 
-    # 필살기 조건: 웨이브>=10 and (보볼리 mod 5)==0
-    wge10 = cmp_op("operator_gt", vrep("웨이브", V_WAVE), 9)
-    vol_mod = op("operator_mod", vrep("보볼리", V_BOSSVOLLEY), 5)
-    vol0 = cmp_op("operator_equals", vol_mod, 0)
-    # 보볼리>0 so first shot isn't special at 0
-    vol_pos = cmp_op("operator_gt", vrep("보볼리", V_BOSSVOLLEY), 0)
-    is_special = bool_op("operator_and", wge10, bool_op("operator_and", vol0, vol_pos))
-    # HP 40% 이하면 추가: 매 3볼리마다 필살기 (더 자주)
-    # 단순화: 기본 is_special 유지 + 저체력 시 mod 3
-    hp_ratio_num = op("operator_multiply", vrep("보스체력", V_BOSSHP), 1)
-    # low HP: 체력 < 기본*0.4 근사 — 보스기본+웨이브*8 의 40%는 복잡하니 체력 < 25+웨이브*2
-    low_th = op("operator_add", 20, op("operator_multiply", vrep("웨이브", V_WAVE), 2))
-    low_hp = cmp_op("operator_lt", vrep("보스체력", V_BOSSHP), low_th)
-    vol_mod3 = op("operator_mod", vrep("보볼리", V_BOSSVOLLEY), 3)
-    vol3_0 = cmp_op("operator_equals", vol_mod3, 0)
-    is_sp2 = bool_op("operator_and", low_hp, bool_op("operator_and", vol3_0, vol_pos))
-    do_special = bool_op("operator_or", is_special, is_sp2)
+    def make_cross():
+        """십자 8방향 + 플레이어 조준 부채."""
+        set_fi = b_setvar(bs, "보스발사i", V_BOSSFI, 0)
+        fi = vrep("보스발사i", V_BOSSFI)
+        fdir = op("operator_multiply", fi, 45)
+        set_bdir = b_setvar(bs, "보스탄방향", V_BBDIR, fdir)
+        br_f = b_broadcast(bs, "보스사격", BR_BFIRE)
+        y0 = b_wait(bs, 0)
+        ch_fi = b_changevar(bs, "보스발사i", V_BOSSFI, 1)
+        chain([(set_bdir, bs[set_bdir]), (br_f, bs[br_f]), (y0, bs[y0]), (ch_fi, bs[ch_fi])])
+        rep = gen(); bs[rep] = mk("control_repeat",
+            inputs={"TIMES": num(8), "SUBSTACK": [2, set_bdir]})
+        bs[set_bdir]["parent"] = rep
+        fan3 = make_fan(11, multi_n=5)
+        chain([(set_fi, bs[set_fi]), (rep, bs[rep]), (fan3, bs[fan3])])
+        return set_fi
 
-    fire_branch = b_ifelse(bs, do_special, set_fi0s, set_fi0)
+    def make_double_fan():
+        """빠른 2연 부채 (숨 돌릴 틈 없이)."""
+        f1 = make_fan(14, multi_var=("보스탄수", V_BOSSMULTI))
+        w = b_wait(bs, 0.07)
+        f2 = make_fan(12, multi_var=("보스탄수", V_BOSSMULTI))
+        chain([(f1, bs[f1]), (w, bs[w]), (f2, bs[f2])])
+        return f1
+
+    def make_flower(ring_n):
+        """링 + 조준 부채 동시 (고티어 필살기)."""
+        r = make_ring(ring_n, spin=True)
+        f = make_fan(12, multi_var=("보스탄수", V_BOSSMULTI))
+        chain([(r, bs[r]), (f, bs[f])])
+        return r
+
+    # --- 패턴 프리셋 ---
+    pat_fan = make_fan(14, multi_var=("보스탄수", V_BOSSMULTI))
+    pat_shot = make_fan(24, multi_n=10)       # 넓은 산탄
+    pat_shot_h = make_fan(18, multi_n=12)     # 고티어 산탄
+    pat_double = make_double_fan()
+    pat_ring12 = make_ring(12)
+    pat_ring16 = make_ring(16)
+    pat_ring20 = make_ring(20)
+    pat_ring24 = make_ring(24)
+    pat_spiral = make_ring(14, spin=True)
+    pat_spiral_h = make_ring(18, spin=True)
+    pat_cross = make_cross()
+    pat_flower = make_flower(16)
+    pat_flower_h = make_flower(20)
+
+    # --- 조건 ---
+    vol = vrep("보볼리", V_BOSSVOLLEY)
+    vol_pos = cmp_op("operator_gt", vol, 0)
+    low_hp = cmp_op("operator_lt",
+        op("operator_multiply", vrep("보스체력", V_BOSSHP), 2.5),
+        vrep("보스최대체력", V_BOSSMAX))
+    # 티어 비교 (정수 티어 기준)
+    t = vrep("보스티어", V_BOSSTIER)
+    t_ge2 = cmp_op("operator_gt", t, 1)   # >=2
+    t_ge3 = cmp_op("operator_gt", t, 2)
+    t_ge4 = cmp_op("operator_gt", t, 3)
+    t_ge5 = cmp_op("operator_gt", t, 4)
+
+    # 패턴 슬롯 = 보볼리 % 6  → 0..5 로 분기해 티어별 테이블
+    slot_m = op("operator_mod", vol, 6)
+    s0 = cmp_op("operator_equals", slot_m, 0)
+    s1 = cmp_op("operator_equals", slot_m, 1)
+    s2 = cmp_op("operator_equals", slot_m, 2)
+    s3 = cmp_op("operator_equals", slot_m, 3)
+    s4 = cmp_op("operator_equals", slot_m, 4)
+    # s5 = else fan
+
+    # 슬롯별 기본 패턴 (티어 해금 반영)
+    # s0: 링/플라워 필살기
+    p_s0 = b_ifelse(bs, t_ge5, pat_flower_h,
+            b_ifelse(bs, t_ge4, pat_flower,
+            b_ifelse(bs, t_ge3, pat_ring20,
+            b_ifelse(bs, t_ge2, pat_ring16, pat_ring12))))
+    # s1: 산탄 (T2+) else 부채
+    p_s1 = b_ifelse(bs, t_ge4, pat_shot_h,
+            b_ifelse(bs, t_ge2, pat_shot, pat_fan))
+    # s2: 스파이럴 (T2+) / 더블부채 (T1)
+    p_s2 = b_ifelse(bs, t_ge5, pat_spiral_h,
+            b_ifelse(bs, t_ge2, pat_spiral, pat_double))
+    # s3: 십자 (T3+) else 더블부채
+    p_s3 = b_ifelse(bs, t_ge3, pat_cross, pat_double)
+    # s4: 링 (T1부터, 밀도↑)
+    p_s4 = b_ifelse(bs, t_ge5, pat_ring24,
+            b_ifelse(bs, t_ge3, pat_ring16, pat_ring12))
+    # s5: 기본 부채 (항상)
+
+    # 슬롯 라우팅: s0 > s1 > s2 > s3 > s4 > fan
+    br45 = b_ifelse(bs, s4, p_s4, pat_fan)
+    br35 = b_ifelse(bs, s3, p_s3, br45)
+    br25 = b_ifelse(bs, s2, p_s2, br35)
+    br15 = b_ifelse(bs, s1, p_s1, br25)
+    br_slot = b_ifelse(bs, s0, p_s0, br15)
+
+    # 저체력 광폭: 슬롯 무시하고 강한 패턴 강제 (티어별)
+    rage = b_ifelse(bs, t_ge4, pat_flower_h,
+            b_ifelse(bs, t_ge3, pat_cross,
+            b_ifelse(bs, t_ge2, pat_spiral, pat_double)))
+    # 저체력 + 짝수 볼리 → 광폭, 아니면 슬롯
+    vol_even = cmp_op("operator_equals", op("operator_mod", vol, 2), 0)
+    do_rage = bool_op("operator_and", low_hp, bool_op("operator_and", vol_pos, vol_even))
+    fire_branch = b_ifelse(bs, do_rage, rage, br_slot)
+
     ch_vol = b_changevar(bs, "보볼리", V_BOSSVOLLEY, 1)
-    # 저체력 시 간격 30% 단축
+    # 쿨: 저체력 시 55% / 티어 높을수록 gap 이미 짧음
     set_cd_n = b_setvar(bs, "보사쿨", V_BOSSCD, vrep("보스간격", V_BOSSGAP))
-    gap_fast = op("operator_multiply", vrep("보스간격", V_BOSSGAP), 0.65)
+    gap_fast = op("operator_multiply", vrep("보스간격", V_BOSSGAP), 0.55)
     set_cd_f = b_setvar(bs, "보사쿨", V_BOSSCD, gap_fast)
     cd_branch = b_ifelse(bs, low_hp, set_cd_f, set_cd_n)
 
@@ -1843,15 +2147,19 @@ def build_boss_blocks():
         inputs={"VALUE": num(0)}, fields={"EFFECT": ["BRIGHTNESS", None]})
     if_flash = b_ifelse(bs, hit_on, brt_on, brt_off)
 
-    dead = cmp_op("operator_lt", vrep("보스체력", V_BOSSHP), 1)
+    # 사망 1회만 처리 (매 프레임 적수-- 방지 → 웨이브 소프트락 원인)
+    dead = bool_op("operator_and",
+        cmp_op("operator_lt", vrep("보스체력", V_BOSSHP), 1),
+        cmp_op("operator_equals", vrep("보스사망", V_BOSSDEAD), 0))
+    set_bd1 = b_setvar(bs, "보스사망", V_BOSSDEAD, 1)
     ch_sc = b_changevar(bs, "점수", V_SCORE, 15)
     ch_al = b_changevar(bs, "적수", V_ALIVE, -1)
     boom = b_sound(bs, "explode")
     hi2 = gen(); bs[hi2] = mk("looks_hide")
     set_hp0 = b_setvar(bs, "보스체력", V_BOSSHP, 0)
-    chain([(ch_sc, bs[ch_sc]), (ch_al, bs[ch_al]), (boom, bs[boom]),
+    chain([(set_bd1, bs[set_bd1]), (ch_sc, bs[ch_sc]), (ch_al, bs[ch_al]), (boom, bs[boom]),
            (hi2, bs[hi2]), (set_hp0, bs[set_hp0])])
-    if_dead = b_if(bs, dead, ch_sc)
+    if_dead = b_if(bs, dead, set_bd1)
 
     wt = b_wait(bs, 0.05)
     chain([(if_edge_r, bs[if_edge_r]), (if_edge_l, bs[if_edge_l]),
@@ -1860,12 +2168,13 @@ def build_boss_blocks():
            (chx, bs[chx]), (chy, bs[chy]),
            (if_fire, bs[if_fire]), (if_cdt, bs[if_cdt]),
            (if_mis, bs[if_mis]), (if_las, bs[if_las]), (if_meg, bs[if_meg]),
-           (if_ht, bs[if_ht]), (if_flash, bs[if_flash]), (if_dead, bs[if_dead]), (wt, bs[wt])])
+           (if_ht, bs[if_ht]), (if_flash, bs[if_flash]), (wt, bs[wt])])
     if_act = b_if(bs, active, if_edge_r)
     hi_go = gen(); bs[hi_go] = mk("looks_hide")
     if_go = b_if(bs, cmp_op("operator_equals", vrep("게임상태", V_STATE), 0), hi_go)
     w2 = b_wait(bs, 0.05)
-    chain([(if_act, bs[if_act]), (if_go, bs[if_go]), (w2, bs[w2])])
+    # 사망 처리는 active 밖 — 폭탄 등으로 HP=0 이 된 뒤에도 1회 처리
+    chain([(if_act, bs[if_act]), (if_dead, bs[if_dead]), (if_go, bs[if_go]), (w2, bs[w2])])
     fr = b_forever(bs, if_act)
     chain([(hb, bs[hb]), (fr, bs[fr])])
 
@@ -1952,11 +2261,13 @@ def build_boss_bullet_blocks():
     dir_v = vrep("보스탄방향", V_BBDIR)
     pdir = gen(); bs[pdir] = mk("motion_pointindirection", inputs={"DIRECTION": slot(dir_v)})
     bs[dir_v]["parent"] = pdir
-    sz = gen(); bs[sz] = mk("looks_setsizeto", inputs={"SIZE": num(80)})
     sh = gen(); bs[sh] = mk("looks_show")
-    # 탄속: 기본 7, 웨이브 높을수록 +0.3 per tier
-    spd = op("operator_add", 7, op("operator_multiply",
-            op("operator_divide", vrep("웨이브", V_WAVE), 5), 0.5))
+    # 탄속: 6.5 + 티어*1.4 (회차마다 뚜렷하게 빨라짐)
+    spd = op("operator_add", 6.5, op("operator_multiply", vrep("보스티어", V_BOSSTIER), 1.4))
+    # 탄 크기도 티어 비례 (위협감)
+    bsz = op("operator_add", 70, op("operator_multiply", vrep("보스티어", V_BOSSTIER), 8))
+    sz = gen(); bs[sz] = mk("looks_setsizeto", inputs={"SIZE": slot(bsz)})
+    bs[bsz]["parent"] = sz
     mv = b_movesteps(bs, spd)
     # player hit
     touch = b_touching(bs, "내로봇")
@@ -2020,6 +2331,8 @@ def build_enemy_blocks():
 
     sc = gen(); bs[sc] = mk("control_start_as_clone", top=True, x=20, y=260)
     set_isc = b_setvar(bs, "복제됨", V_EIS, 1)
+    set_alive = b_changevar(bs, "적수", V_ALIVE, 1)  # 실제 클론 생성 시에만 +1
+    set_dead0 = b_setvar(bs, "사망함", V_EDEAD, 0)
     set_hit = b_setvar(bs, "피격쿨", V_EHIT, 0)
     set_typ = b_setvar(bs, "적종류", V_ETYPE, vrep("적생성종류", V_SPTYPE))
     set_hp = b_setvar(bs, "내체력", V_EHP, vrep("약한적_체력", V_EHPW))
@@ -2057,8 +2370,9 @@ def build_enemy_blocks():
     aim = b_pointtowards(bs, "내로봇")
     mv = b_movesteps(bs, vrep("내속도", V_ESPD))
 
-    # --- 공통: 폭발 사망 시퀀스 빌더 ---
+    # --- 공통: 폭발 사망 시퀀스 (1회만, 폭탄+탄 동시 처치 시 적수 이중-- 방지) ---
     def make_kill_seq():
+        set_dd = b_setvar(bs, "사망함", V_EDEAD, 1)
         ch_sc = b_changevar(bs, "점수", V_SCORE, 1)
         ch_al = b_changevar(bs, "적수", V_ALIVE, -1)
         boom = b_sound(bs, "explode")
@@ -2077,16 +2391,19 @@ def build_enemy_blocks():
             inputs={"TIMES": num(6), "SUBSTACK": [2, ch_sz]})
         bs[ch_sz]["parent"] = rep_an
         dell = gen(); bs[dell] = mk("control_delete_this_clone")
-        chain([(ch_sc, bs[ch_sc]), (ch_al, bs[ch_al]), (boom, bs[boom]),
+        chain([(set_dd, bs[set_dd]), (ch_sc, bs[ch_sc]), (ch_al, bs[ch_al]), (boom, bs[boom]),
                (sw_ex, bs[sw_ex]), (set_sz, bs[set_sz]), (clr_gh, bs[clr_gh]),
                (rep_an, bs[rep_an]), (dell, bs[dell])])
-        return ch_sc
+        # 아직 안 죽은 경우만
+        not_dead = cmp_op("operator_equals", vrep("사망함", V_EDEAD), 0)
+        return b_if(bs, not_dead, set_dd)
 
     def make_hit_if(touch_name, dmg_reporter_fn):
-        """touch_name 스프라이트에 닿고 피격쿨=0이면 데미지·타격음·플래시·스파크·팝업·사망."""
+        """touch_name 스프라이트에 닿고 피격쿨=0·미사망이면 데미지·타격음·플래시·스파크·팝업·사망."""
         touch = b_touching(bs, touch_name)
-        can = bool_op("operator_and", touch,
-                      cmp_op("operator_equals", vrep("피격쿨", V_EHIT), 0))
+        can = bool_op("operator_and",
+            bool_op("operator_and", touch, cmp_op("operator_equals", vrep("피격쿨", V_EHIT), 0)),
+            cmp_op("operator_equals", vrep("사망함", V_EDEAD), 0))
         dmg_val = dmg_reporter_fn()
         set_hit = b_setvar(bs, "피격데미지", V_HITDMG, dmg_val)
         neg = op("operator_subtract", 0, vrep("피격데미지", V_HITDMG))
@@ -2157,13 +2474,20 @@ def build_enemy_blocks():
            (if_mis, bs[if_mis]), (if_las, bs[if_las]), (if_meg, bs[if_meg]),
            (if_pl, bs[if_pl]), (if_hcd, bs[if_hcd]), (if_flash, bs[if_flash]), (w, bs[w])])
     if_play = b_if(bs, st1, aim)
+    # 게임오버: 살아 있던 클론만 적수-- 후 삭제 / 이미 사망 처리된 클론은 삭제만
     del_go = gen(); bs[del_go] = mk("control_delete_this_clone")
-    if_go = b_if(bs, cmp_op("operator_equals", vrep("게임상태", V_STATE), 0), del_go)
+    fix_al = b_changevar(bs, "적수", V_ALIVE, -1)
+    set_dd_go = b_setvar(bs, "사망함", V_EDEAD, 1)
+    chain([(set_dd_go, bs[set_dd_go]), (fix_al, bs[fix_al]), (del_go, bs[del_go])])
+    del_only = gen(); bs[del_only] = mk("control_delete_this_clone")
+    go_branch = b_ifelse(bs, cmp_op("operator_equals", vrep("사망함", V_EDEAD), 0), set_dd_go, del_only)
+    if_go = b_if(bs, cmp_op("operator_equals", vrep("게임상태", V_STATE), 0), go_branch)
     w2 = b_wait(bs, 0.04)
     chain([(if_play, bs[if_play]), (if_go, bs[if_go]), (w2, bs[w2])])
     fr = b_forever(bs, if_play)
 
-    chain([(sc, bs[sc]), (set_isc, bs[set_isc]), (set_hit, bs[set_hit]),
+    chain([(sc, bs[sc]), (set_isc, bs[set_isc]), (set_alive, bs[set_alive]),
+           (set_dead0, bs[set_dead0]), (set_hit, bs[set_hit]),
            (set_typ, bs[set_typ]), (set_hp, bs[set_hp]), (set_sp, bs[set_sp]),
            (sw1, bs[sw1]), (sz1, bs[sz1]), (if2, bs[if2]), (if3, bs[if3]),
            (ch_ehp, bs[ch_ehp]), (ch_esp, bs[ch_esp]), (go, bs[go]), (show, bs[show]),
@@ -2173,8 +2497,10 @@ def build_enemy_blocks():
     ha = gen(); bs[ha] = mk("event_whenbroadcastreceived", top=True, x=520, y=260,
         fields={"BROADCAST_OPTION": ["조준요청", BR_AIM]})
     active = bool_op("operator_and",
-        cmp_op("operator_equals", vrep("복제됨", V_EIS), 1),
-        cmp_op("operator_equals", vrep("게임상태", V_STATE), 1))
+        bool_op("operator_and",
+            cmp_op("operator_equals", vrep("복제됨", V_EIS), 1),
+            cmp_op("operator_equals", vrep("게임상태", V_STATE), 1)),
+        cmp_op("operator_equals", vrep("사망함", V_EDEAD), 0))
     dist = b_distance_to(bs, "내로봇")
     closer = cmp_op("operator_lt", dist, vrep("조준거리", V_AIMD))
     set_ad = b_setvar(bs, "조준거리", V_AIMD, b_distance_to(bs, "내로봇"))
@@ -2191,8 +2517,9 @@ def build_enemy_blocks():
     # 폭탄폭발: 폭발 좌표(폭탄X/Y)와의 거리 ≤ 폭탄반경이면 공격력*3
     hp = gen(); bs[hp] = mk("event_whenbroadcastreceived", top=True, x=520, y=420,
         fields={"BROADCAST_OPTION": ["폭탄폭발", BR_BOMBBOOM]})
-    is_cl = cmp_op("operator_equals", vrep("복제됨", V_EIS), 1)
-    # dist = sqrt((x-폭탄X)^2 + (y-폭탄Y)^2) — 같은 식 2번 만들어 곱
+    is_cl = bool_op("operator_and",
+        cmp_op("operator_equals", vrep("복제됨", V_EIS), 1),
+        cmp_op("operator_equals", vrep("사망함", V_EDEAD), 0))
     def dx_block():
         xp = gen(); bs[xp] = mk("motion_xposition")
         return op("operator_subtract", xp, vrep("폭탄X", V_BOMBX))
@@ -2222,24 +2549,9 @@ def build_enemy_blocks():
     set_k = b_setvar(bs, "데미지종류", V_DMGKIND, 1)
     bc = b_broadcast(bs, "데미지표시", BR_DMG)
     bc_fx = b_broadcast(bs, "타격효과", BR_HITFX)
-    # kill if dead (compact explosion)
-    ch_sc = b_changevar(bs, "점수", V_SCORE, 1)
-    ch_al = b_changevar(bs, "적수", V_ALIVE, -1)
-    boom = b_sound(bs, "explode")
-    exm = gen(); bs[exm] = mk("looks_costume", fields={"COSTUME": ["폭발", None]}, shadow=True)
-    sw = gen(); bs[sw] = mk("looks_switchcostumeto", inputs={"COSTUME": [1, exm]})
-    bs[exm]["parent"] = sw
-    ch_sz = gen(); bs[ch_sz] = mk("looks_changesizeby", inputs={"CHANGE": num(14)})
-    ch_gh = gen(); bs[ch_gh] = mk("looks_changeeffectby",
-        inputs={"CHANGE": num(18)}, fields={"EFFECT": ["GHOST", None]})
-    wa = b_wait(bs, 0.03)
-    chain([(ch_sz, bs[ch_sz]), (ch_gh, bs[ch_gh]), (wa, bs[wa])])
-    rep = gen(); bs[rep] = mk("control_repeat", inputs={"TIMES": num(5), "SUBSTACK": [2, ch_sz]})
-    bs[ch_sz]["parent"] = rep
-    dell = gen(); bs[dell] = mk("control_delete_this_clone")
-    chain([(ch_sc, bs[ch_sc]), (ch_al, bs[ch_al]), (boom, bs[boom]), (sw, bs[sw]),
-           (rep, bs[rep]), (dell, bs[dell])])
-    if_die = b_if(bs, cmp_op("operator_lt", vrep("내체력", V_EHP), 1), ch_sc)
+    # 사망은 make_kill_seq 와 동일 가드 (이중 적수-- 금지)
+    kill_b = make_kill_seq()
+    if_die = b_if(bs, cmp_op("operator_lt", vrep("내체력", V_EHP), 1), kill_b)
     chain([(set_hd, bs[set_hd]), (dmgp, bs[dmgp]), (hit_snd, bs[hit_snd]), (brt, bs[brt]),
            (set_dval, bs[set_dval]), (set_dx, bs[set_dx]), (set_dy, bs[set_dy]), (set_k, bs[set_k]),
            (bc, bs[bc]), (bc_fx, bs[bc_fx]), (if_die, bs[if_die])])
@@ -2380,13 +2692,14 @@ def build_dmg_blocks():
     return bs
 
 # ============================================================
-#  강화 — 랜덤 3장 택1 (풀 6종)
-#  1공격 2연사 3여러발 4관통 5레이저+ 6스킬쿨-
+#  강화 — 랜덤 3장 택1 (풀 7종)
+#  1공격 2연사 3여러발 4관통 5레이저+ 6스킬쿨- 7스피드+
 # ============================================================
 def build_card_blocks():
     """배너: 랜덤 뽑기 + 1/2/3 입력 + 적용 + 다음웨이브."""
     bs = {}
     vrep, op, cmp_op, bool_op = make_helpers(bs)
+    UP_N = 7  # 강화 풀 크기
 
     h = gen(); bs[h] = mk("event_whenflagclicked", top=True, x=20, y=20)
     hi = gen(); bs[hi] = mk("looks_hide")
@@ -2395,15 +2708,15 @@ def build_card_blocks():
 
     hw = gen(); bs[hw] = mk("event_whenbroadcastreceived", top=True, x=20, y=160,
         fields={"BROADCAST_OPTION": ["웨이브클리어", BR_WAVECLR]})
-    # 카드1 = random 1..6
-    r1 = gen(); bs[r1] = mk("operator_random", inputs={"FROM": num(1), "TO": num(6)})
+    # 카드1 = random 1..7
+    r1 = gen(); bs[r1] = mk("operator_random", inputs={"FROM": num(1), "TO": num(UP_N)})
     set_c1 = b_setvar(bs, "카드1", V_CARD1, r1)
     # 카드2 != 카드1
-    r2 = gen(); bs[r2] = mk("operator_random", inputs={"FROM": num(1), "TO": num(6)})
+    r2 = gen(); bs[r2] = mk("operator_random", inputs={"FROM": num(1), "TO": num(UP_N)})
     set_c2 = b_setvar(bs, "카드2", V_CARD2, r2)
     same12 = cmp_op("operator_equals", vrep("카드2", V_CARD2), vrep("카드1", V_CARD1))
     # repeat until different: simple retry loop
-    r2b = gen(); bs[r2b] = mk("operator_random", inputs={"FROM": num(1), "TO": num(6)})
+    r2b = gen(); bs[r2b] = mk("operator_random", inputs={"FROM": num(1), "TO": num(UP_N)})
     set_c2b = b_setvar(bs, "카드2", V_CARD2, r2b)
     w0 = b_wait(bs, 0)
     chain([(set_c2b, bs[set_c2b]), (w0, bs[w0])])
@@ -2414,16 +2727,16 @@ def build_card_blocks():
     not_eq = gen(); bs[not_eq] = mk("operator_not", inputs={"OPERAND": [2, eq12]})
     bs[eq12]["parent"] = not_eq
     # body: re-roll
-    r2c = gen(); bs[r2c] = mk("operator_random", inputs={"FROM": num(1), "TO": num(6)})
+    r2c = gen(); bs[r2c] = mk("operator_random", inputs={"FROM": num(1), "TO": num(UP_N)})
     set_c2c = b_setvar(bs, "카드2", V_CARD2, r2c)
     ru2 = gen(); bs[ru2] = mk("control_repeat_until",
         inputs={"CONDITION": [2, not_eq], "SUBSTACK": [2, set_c2c]})
     bs[not_eq]["parent"] = ru2; bs[set_c2c]["parent"] = ru2
 
-    r3 = gen(); bs[r3] = mk("operator_random", inputs={"FROM": num(1), "TO": num(6)})
+    r3 = gen(); bs[r3] = mk("operator_random", inputs={"FROM": num(1), "TO": num(UP_N)})
     set_c3 = b_setvar(bs, "카드3", V_CARD3, r3)
     # until c3 != c1 and c3 != c2
-    r3c = gen(); bs[r3c] = mk("operator_random", inputs={"FROM": num(1), "TO": num(6)})
+    r3c = gen(); bs[r3c] = mk("operator_random", inputs={"FROM": num(1), "TO": num(UP_N)})
     set_c3c = b_setvar(bs, "카드3", V_CARD3, r3c)
     ne31 = cmp_op("operator_equals", vrep("카드3", V_CARD3), vrep("카드1", V_CARD1))
     ne32 = cmp_op("operator_equals", vrep("카드3", V_CARD3), vrep("카드2", V_CARD2))
@@ -2462,12 +2775,11 @@ def build_card_blocks():
     ap2 = if_type(2, ch_gap)
     ap3 = if_type(3, b_changevar(bs, "추가발사", V_MULTI, 1))
     ap4 = if_type(4, b_changevar(bs, "관통", V_PIERCE, 1))
-    # 5: 레이저+
+    # 5: 레이저+ (레벨↑ = 동시 발사량↑ + 연사 소폭↑)
     ch_las = b_changevar(bs, "레이저레벨", V_LASER, 1)
-    # 레이저간격 약간 감소
-    ch_lg = b_changevar(bs, "레이저간격", V_LASERGAP, -0.05)
-    if_lmin = b_if(bs, cmp_op("operator_lt", vrep("레이저간격", V_LASERGAP), 0.3),
-                   b_setvar(bs, "레이저간격", V_LASERGAP, 0.3))
+    ch_lg = b_changevar(bs, "레이저간격", V_LASERGAP, -0.06)
+    if_lmin = b_if(bs, cmp_op("operator_lt", vrep("레이저간격", V_LASERGAP), 0.28),
+                   b_setvar(bs, "레이저간격", V_LASERGAP, 0.28))
     chain([(ch_las, bs[ch_las]), (ch_lg, bs[ch_lg]), (if_lmin, bs[if_lmin])])
     ap5 = if_type(5, ch_las)
     # 6: 스킬쿨 최대 -1 (하한 4)
@@ -2479,6 +2791,12 @@ def build_card_blocks():
                  b_setvar(bs, "폭탄쿨최대", V_SK2MAX, 4))
     chain([(ch_s1, bs[ch_s1]), (ch_s2, bs[ch_s2]), (if_s1, bs[if_s1]), (if_s2, bs[if_s2])])
     ap6 = if_type(6, ch_s1)
+    # 7: 스피드+ (이동속도 +1.5, 상한 14)
+    ch_spd = b_changevar(bs, "이동속도", V_MOVE, 1.5)
+    if_spd = b_if(bs, cmp_op("operator_gt", vrep("이동속도", V_MOVE), 14),
+                  b_setvar(bs, "이동속도", V_MOVE, 14))
+    chain([(ch_spd, bs[ch_spd]), (if_spd, bs[if_spd])])
+    ap7 = if_type(7, ch_spd)
 
     ch_hp = b_changevar(bs, "체력", V_HP, 1)
     if_cap = b_if(bs, cmp_op("operator_gt", vrep("체력", V_HP), vrep("최대체력", V_MAXHP)),
@@ -2491,12 +2809,12 @@ def build_card_blocks():
            (front, bs[front]), (sh, bs[sh]), (wu, bs[wu]),
            (if_k1, bs[if_k1]), (if_k2, bs[if_k2]), (if_k3, bs[if_k3]),
            (ap1, bs[ap1]), (ap2, bs[ap2]), (ap3, bs[ap3]), (ap4, bs[ap4]),
-           (ap5, bs[ap5]), (ap6, bs[ap6]),
+           (ap5, bs[ap5]), (ap6, bs[ap6]), (ap7, bs[ap7]),
            (ch_hp, bs[ch_hp]), (if_cap, bs[if_cap]), (hi2, bs[hi2]), (br, bs[br])])
     return bs
 
 def build_card_slot_blocks(slot_idx, x_pos, card_var, card_vid):
-    """슬롯 스프라이트: 카드갱신 시 코스튬 u1~u6 전환."""
+    """슬롯 스프라이트: 카드갱신 시 코스튬 u1~u7 전환."""
     bs = {}
     vrep, op, cmp_op, bool_op = make_helpers(bs)
     h = gen(); bs[h] = mk("event_whenflagclicked", top=True, x=20, y=20)
@@ -2644,6 +2962,7 @@ def main():
     up_md5s = {n: save_svg(svg) for n, svg in UP_CARD_SVGS.items()}
     ov_md5 = save_svg(OVER_SVG)
     hp_md5s = [save_svg(s) for s in HP_SVGS]
+    boss_hp_md5s = [save_svg(s) for s in BOSS_HP_SVGS]
     hud_md5 = save_svg(HUD_PANEL_SVG)
     red_md5s = [save_svg(s) for s in DIGIT_RED]
     yel_md5s = [save_svg(s) for s in DIGIT_YEL]
@@ -2662,6 +2981,8 @@ def main():
     }
     sound_md5 = {}
     sound_len = {}
+    sfx_dir = os.path.join(ASSETS, "sfx")
+    os.makedirs(sfx_dir, exist_ok=True)
     for name, fn in sound_specs.items():
         samples = fn()
         data = _wav_bytes(samples)
@@ -2670,9 +2991,22 @@ def main():
         sound_len[name] = len(samples)
         with open(f"{WORK}/{m}.wav", "wb") as f:
             f.write(data)
+        # 미리듣기용 (Finder에서 더블클릭) — sb3 재로드 전 확인
+        with open(os.path.join(sfx_dir, f"{name}.wav"), "wb") as f:
+            f.write(data)
     with open(f"{ASSETS}/pop.wav", "rb") as f: pop_b = f.read()
     pop_md5 = md5_bytes(pop_b)
     with open(f"{WORK}/{pop_md5}.wav", "wb") as f: f.write(pop_b)
+
+    # BGM: 사용자 제공 mp3 바이너리 그대로 (재인코딩 금지)
+    BGM_SRC = os.path.join(ASSETS, "bgm.mp3")
+    with open(BGM_SRC, "rb") as f:
+        bgm_bytes = f.read()
+    bgm_md5 = md5_bytes(bgm_bytes)
+    with open(f"{WORK}/{bgm_md5}.mp3", "wb") as f:
+        f.write(bgm_bytes)
+    BGM_RATE = 48000
+    BGM_SAMPLES = int(249.28 * BGM_RATE)  # robot_shooter_02 ≈ 4:09
 
     def build(fn):
         global _ic
@@ -2700,6 +3034,7 @@ def main():
     icon_bom_blocks = build(lambda: build_skill_icon_blocks(
         "폭탄쿨", V_SK2CD, "폭탄쿨최대", V_SK2MAX, 50, -155))
     hp_ui_blocks = build(build_hp_ui_blocks)
+    boss_hp_blocks = build(build_boss_hp_blocks)
     hud_text_blocks = build(build_hud_text_blocks)
     over_blocks = build(build_over_blocks)
 
@@ -2713,7 +3048,7 @@ def main():
     stage = {
         "isStage": True, "name": "Stage",
         "variables": {
-            V_ATK: ["공격력", 1], V_FIREGAP: ["발사간격", 0.55], V_MISSPD: ["미사일속도", 10],
+            V_ATK: ["공격력", 1], V_FIREGAP: ["발사간격", 0.55], V_MISSPD: ["미사일속도", 18],
             V_PIERCE: ["관통", 1], V_MULTI: ["추가발사", 1], V_MOVE: ["이동속도", 8],
             V_MAXHP: ["최대체력", 5], V_HP: ["체력", 5], V_INV: ["무적시간", 35],
             V_UP: ["강화량", 1], V_WAVEBASE: ["웨이브기본수", 4], V_WAVEADD: ["웨이브증가", 2],
@@ -2738,12 +3073,14 @@ def main():
             V_CARD1: ["카드1", 1], V_CARD2: ["카드2", 2], V_CARD3: ["카드3", 3],
             V_PICK: ["선택슬롯", 0], V_UPTYPE: ["강화타입", 0], V_HITDMG: ["피격데미지", 1],
             V_TMP2: ["임시2", 0], V_CDGHOST: ["쿨고스트", 0],
-            V_BOSSMODE: ["보스모드", 0], V_BOSSHP: ["보스체력", 0],
+            V_BOSSMODE: ["보스모드", 0], V_BOSSHP: ["보스체력", 0], V_BOSSDEAD: ["보스사망", 1],
+            V_BOSSMAX: ["보스최대체력", 1], V_BOSSTIER: ["보스티어", 1], V_BARSEG: ["보스가이지", 0],
             V_BOSSDIR: ["보스방향", 1], V_BOSSDIRY: ["보스방향Y", 1],
             V_BOSSCD: ["보사쿨", 0], V_BOSSHIT: ["보스피격쿨", 0],
             V_BBX: ["보스탄X", 0], V_BBY: ["보스탄Y", 0], V_BBDIR: ["보스탄방향", 90],
             V_BOSSMULTI: ["보스탄수", 1], V_BOSSGAP: ["보스간격", 0.75],
             V_BOSSVOLLEY: ["보볼리", 0], V_BOSSFI: ["보스발사i", 0],
+            V_BGMVOL: ["브금볼륨", 55],
         },
         "lists": {},
         "broadcasts": {
@@ -2756,7 +3093,11 @@ def main():
         "blocks": stage_blocks, "comments": {},
         "currentCostume": 0,
         "costumes": [{**c_bg, "name": "아레나"}],
-        "sounds": [snd("pop", pop_md5, 258)],
+        "sounds": [
+            {"name": "bgm", "assetId": bgm_md5, "dataFormat": "mp3", "format": "",
+             "rate": BGM_RATE, "sampleCount": BGM_SAMPLES, "md5ext": f"{bgm_md5}.mp3"},
+            snd("pop", pop_md5, 258),
+        ],
         "volume": 100, "layerOrder": 0, "tempo": 60,
         "videoTransparency": 50, "videoState": "on", "textToSpeechLanguage": None
     }
@@ -2911,6 +3252,22 @@ def main():
         "draggable": False, "rotationStyle": "don't rotate"
     }
 
+    boss_hp_ui = {
+        "isStage": False, "name": "보스체력바",
+        "variables": {}, "lists": {}, "broadcasts": {},
+        "blocks": boss_hp_blocks, "comments": {},
+        "currentCostume": BOSS_HP_SEGS,
+        "costumes": [
+            {"name": f"bar{i}", "bitmapResolution": 1, "dataFormat": "svg",
+             "assetId": boss_hp_md5s[i], "md5ext": f"{boss_hp_md5s[i]}.svg",
+             "rotationCenterX": 160, "rotationCenterY": 20}
+            for i in range(BOSS_HP_SEGS + 1)
+        ],
+        "sounds": [], "volume": 100, "layerOrder": 20, "visible": False,
+        "x": 0, "y": -118, "size": 100, "direction": 90,
+        "draggable": False, "rotationStyle": "don't rotate"
+    }
+
     hud_text = {
         "isStage": False, "name": "점수판",
         "variables": {}, "lists": {}, "broadcasts": {},
@@ -2926,7 +3283,7 @@ def main():
 
     enemy = {
         "isStage": False, "name": "적로봇",
-        "variables": {V_EIS: ["복제됨", 0], V_EHP: ["내체력", 1], V_ESPD: ["내속도", 1],
+        "variables": {V_EIS: ["복제됨", 0], V_EDEAD: ["사망함", 0], V_EHP: ["내체력", 1], V_ESPD: ["내속도", 1],
                       V_ETYPE: ["적종류", 1], V_EHIT: ["피격쿨", 0]},
         "lists": {}, "broadcasts": {},
         "blocks": enemy_blocks, "comments": {},
@@ -2991,7 +3348,7 @@ def main():
 
     def make_slot(name, blocks, x):
         costumes = []
-        for n in range(1, 7):
+        for n in sorted(up_md5s.keys()):
             m = up_md5s[n]
             costumes.append({"name": f"u{n}", "bitmapResolution": 1, "dataFormat": "svg",
                              "assetId": m, "md5ext": f"{m}.svg",
@@ -3030,9 +3387,9 @@ def main():
     project = {
         "targets": [stage, player, missile, laser, mega, aim_point, pulse, boss, boss_bullet,
                     enemy, hitfx, dmg, card, slot1, slot2, slot3,
-                    icon_laser, icon_bomb, hp_ui, hud_text, over],
+                    icon_laser, icon_bomb, hp_ui, boss_hp_ui, hud_text, over],
         "monitors": monitors, "extensions": [],
-        "meta": {"semver": "3.0.0", "vm": "13.7.4-svg", "agent": "robot-shooter-v9-walk"}
+        "meta": {"semver": "3.0.0", "vm": "13.7.4-svg", "agent": "robot-shooter-v10-boss"}
     }
     pj = f"{WORK}/project.json"
     with open(pj, "w", encoding="utf-8") as f:
@@ -3049,7 +3406,8 @@ def main():
               ("enemy", enemy_blocks), ("hitfx", hitfx_blocks), ("dmg", dmg_blocks), ("card", card_blocks),
               ("slot1", slot1_blocks), ("slot2", slot2_blocks), ("slot3", slot3_blocks),
               ("iconL", icon_las_blocks), ("iconB", icon_bom_blocks),
-              ("hpUI", hp_ui_blocks), ("hud", hud_text_blocks), ("over", over_blocks)]
+              ("hpUI", hp_ui_blocks), ("bossHP", boss_hp_blocks),
+              ("hud", hud_text_blocks), ("over", over_blocks)]
     print(f"wrote {OUTPUT}")
     t = 0
     for nm, b in totals:

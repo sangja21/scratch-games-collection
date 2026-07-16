@@ -46,6 +46,8 @@ Scratch 3.0 으로 만든 학습형 미니게임 모음입니다. 코드(블록)
 - 14개 한글 손잡이(성장량·먹기기준·속도·스폰 등)로 성장 곡선을 직접 튜닝
 
 ### 🤖 [로봇 슈터](games/robot-shooter/) — 액션 · 탑뷰 자동 미사일
+<img src="games/robot-shooter/screenshot.png" width="480" alt="로봇 슈터"> <img src="games/robot-shooter/screenshot-boss.png" width="480" alt="로봇 슈터 보스전">
+
 탑뷰 아레나에서 **자동 미사일 + 레이저 + 투척 폭탄**으로 적 모빌슈트를 쓸어 담는 웨이브 슈터.
 - ←→↑↓ 이동 · **Z 레이저스킬 / X 폭탄 투척**(날아가 펑!) · 스킬 아이콘 쿨 UI · 체력 하트
 - 웨이브 클리어 **랜덤 강화 3택1** · 변수 모니터 없이 UI 표시 · 데미지 숫자·폭발 연출
