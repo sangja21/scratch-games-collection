@@ -93,15 +93,15 @@ def synth_sun(rate=SND_RATE):
     return out
 
 def synth_chomp(rate=SND_RATE):
-    """개미 갉기 — 둔한 '우걱' (120Hz 사각파 2펄스, 0.1초)."""
-    N = int(rate * 0.10); out = []
+    """개미 갉기 — 둔한 '우걱' (120Hz 사각파 2펄스, 0.08초). 연타 소음 방지로 작게."""
+    N = int(rate * 0.08); out = []
     for i in range(N):
         t = i / rate
-        sq = 1.0 if math.sin(2 * math.pi * 120 * t) > 0 else -1.0
-        # 두 펄스: 0~0.045, 0.05~0.095
-        pulse = 1.0 if (t < 0.045 or (0.05 < t < 0.095)) else 0.0
-        env = math.exp(-((t % 0.05)) * 20)
-        out.append(sq * env * pulse * 0.4)
+        sq = 1.0 if math.sin(2 * math.pi * 110 * t) > 0 else -1.0
+        # 두 펄스: 0~0.035, 0.04~0.075
+        pulse = 1.0 if (t < 0.035 or (0.04 < t < 0.075)) else 0.0
+        env = math.exp(-((t % 0.04)) * 24)
+        out.append(sq * env * pulse * 0.12)  # 0.4 → 0.12 (훨씬 작게)
     return out
 
 def synth_zombiedie(rate=SND_RATE):
@@ -1193,13 +1193,13 @@ def build_house_blocks():
     rs = b_rotstyle(bs)
     clr = gen(); bs[clr] = mk("looks_cleargraphiceffects")
     set_ha0 = b_setvar(bs, "애니", V_HS_ANIM, 0)
-    # idle 애니 forever
+    # idle 애니 forever — 천천히(0.55초) 살짝만
     flip_h = b_changevar(bs, "애니", V_HS_ANIM, 1)
     am_h = op("operator_mod", vrep("애니", V_HS_ANIM), 2)
     even_h = cmp_op("operator_equals", am_h, 0)
     sw_h0 = b_costume(bs, "창고"); sw_h1 = b_costume(bs, "창고2")
     if_h = b_ifelse(bs, even_h, sw_h0, sw_h1)
-    w_h = b_wait(bs, 0.25)
+    w_h = b_wait(bs, 0.55)
     chain([(flip_h, bs[flip_h]), (if_h, bs[if_h]), (w_h, bs[w_h])])
     fe_h = b_forever(bs, flip_h)
     chain([(h, bs[h]), (show, bs[show]), (g, bs[g]), (sz, bs[sz]), (rs, bs[rs]),
@@ -1280,9 +1280,8 @@ def build_zombie_blocks():
     # 2) 게임상태=1
     play = []
     # 갉기 vs 전진(+보행 애니)
-    # 갉기: 공격 코스튬 토글 + 앞뒤 흔들림 + 우걱 사운드 → 벽이 부서지는 중임을 묘사
+    # 갉기: 공격 코스튬 토글 + 살짝 들이밀기 + 우걱(작은 음량, 격번 재생)
     tc_plant = b_touching(bs, "장치")
-    sh_ch, sp_ch = b_sound(bs, 0, "chomp")
     flip_atk = b_changevar(bs, "애니", V_Z_ANIM, 1)
     def atk_pair(type_val, c0, c1):
         is_t = cmp_op("operator_equals", vrep("내타입", V_Z_TYPE), type_val)
@@ -1294,13 +1293,19 @@ def build_zombie_blocks():
     ak1 = atk_pair(1, "기본개미공", "기본개미공2")
     ak2 = atk_pair(2, "헬멧개미공", "헬멧개미공2")
     ak3 = atk_pair(3, "빠른개미공", "빠른개미공2")
-    # 물어뜯는 느낌: 왼쪽으로 살짝 들이밀었다 복귀
-    x_push = b_changex(bs, -3)
-    w_atk1 = b_wait(bs, 0.06)
-    x_back = b_changex(bs, 3)
-    w_atk2 = b_wait(bs, 0.06)
-    chain([(sh_ch, bs[sh_ch]), (sp_ch, bs[sp_ch]), (flip_atk, bs[flip_atk]),
+    # 소리는 격번만 (짝수 프레임) → 연타 소음 완화
+    am_snd = op("operator_mod", vrep("애니", V_Z_ANIM), 2)
+    even_snd = cmp_op("operator_equals", am_snd, 0)
+    sh_ch, sp_ch = b_sound(bs, 0, "chomp")
+    if_snd = b_if(bs, even_snd, sh_ch)
+    # 물어뜯는 느낌: 아주 살짝만 들이밀었다 복귀
+    x_push = b_changex(bs, -2)
+    w_atk1 = b_wait(bs, 0.07)
+    x_back = b_changex(bs, 2)
+    w_atk2 = b_wait(bs, 0.07)
+    chain([(flip_atk, bs[flip_atk]),
            (ak1, bs[ak1]), (ak2, bs[ak2]), (ak3, bs[ak3]),
+           (if_snd, bs[if_snd]),
            (x_push, bs[x_push]), (w_atk1, bs[w_atk1]),
            (x_back, bs[x_back]), (w_atk2, bs[w_atk2])])
     # 전진: change x + 보행 애니
@@ -1664,31 +1669,37 @@ def build_plant_blocks():
     chain([(rep_cell, bs[rep_cell]), (sw_boom2, bs[sw_boom2]), (rep_an2, bs[rep_an2]), (del_d, bs[del_d])])
     if_dead = b_if(bs, hp_dead, rep_cell)
     play.append(if_dead)
-    # idle 애니 — 피격 중이 아닐 때만(개미 안 닿을 때) 흔들 idle
+    # idle 애니 — 피격 중 아닐 때만, 6틱(~0.3초)마다 한 번만 코스튬 전환(경박함 방지)
     not_biting = b_not(bs, b_touching(bs, "개미"))
     flip_pl = b_changevar(bs, "애니", V_PL_ANIM, 1)
+    # 애니 mod 6 = 0 일 때만 코스튬 갱신, mod 12 로 프레임 0/1 구분
+    mod6 = op("operator_mod", vrep("애니", V_PL_ANIM), 6)
+    should_sw = cmp_op("operator_equals", mod6, 0)
+    mod12 = op("operator_mod", vrep("애니", V_PL_ANIM), 12)
+    frame0 = cmp_op("operator_equals", mod12, 0)  # 0→frame0, 6→frame1
     def plant_anim_pair(type_val, c0, c1):
         is_t = cmp_op("operator_equals", vrep("내타입", V_PL_TYPE), type_val)
-        am = op("operator_mod", vrep("애니", V_PL_ANIM), 2)
-        even = cmp_op("operator_equals", am, 0)
+        # frame0 비교식은 parent 1개 제한 → 타입마다 새로
+        m12 = op("operator_mod", vrep("애니", V_PL_ANIM), 12)
+        f0 = cmp_op("operator_equals", m12, 0)
         sw0 = b_costume(bs, c0); sw1 = b_costume(bs, c1)
-        if_fr = b_ifelse(bs, even, sw0, sw1)
+        if_fr = b_ifelse(bs, f0, sw0, sw1)
         return b_if(bs, is_t, if_fr)
     pa1 = plant_anim_pair(1, "설탕기계", "설탕기계2")
     pa2 = plant_anim_pair(2, "쿠키캐논", "쿠키캐논2")
-    # 초코벽: 금 간 상태가 아니면 idle, 금 가면 idle 스킵(위에서 금 코스튬 유지)
-    # 체력 > half 일 때만 초코 idle
     half_hp2 = op("operator_divide", vrep("초코벽_체력", V_NUTHP), 2)
     nut_ok = cmp_op("operator_gt", vrep("내체력", V_PL_HP), half_hp2)
     is_nut2 = cmp_op("operator_equals", vrep("내타입", V_PL_TYPE), 3)
     c_nut_idle = bool_op("operator_and", is_nut2, nut_ok)
-    am_n = op("operator_mod", vrep("애니", V_PL_ANIM), 2)
-    even_n = cmp_op("operator_equals", am_n, 0)
+    m12n = op("operator_mod", vrep("애니", V_PL_ANIM), 12)
+    f0n = cmp_op("operator_equals", m12n, 0)
     sw_n0 = b_costume(bs, "초코벽"); sw_n1 = b_costume(bs, "초코벽2")
-    if_nfr = b_ifelse(bs, even_n, sw_n0, sw_n1)
+    if_nfr = b_ifelse(bs, f0n, sw_n0, sw_n1)
     pa3 = b_if(bs, c_nut_idle, if_nfr)
     pa4 = plant_anim_pair(4, "밀크폭탄", "밀크폭탄2")
-    chain([(flip_pl, bs[flip_pl]), (pa1, bs[pa1]), (pa2, bs[pa2]), (pa3, bs[pa3]), (pa4, bs[pa4])])
+    chain([(pa1, bs[pa1]), (pa2, bs[pa2]), (pa3, bs[pa3]), (pa4, bs[pa4])])
+    if_sw = b_if(bs, should_sw, pa1)
+    chain([(flip_pl, bs[flip_pl]), (if_sw, bs[if_sw])])
     if_idle = b_if(bs, not_biting, flip_pl)
     play.append(if_idle)
     # 쿨 감소
