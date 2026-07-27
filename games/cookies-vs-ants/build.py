@@ -435,6 +435,12 @@ WAVEFLAG_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="300" height="80
   <rect x="12" y="12" width="276" height="56" rx="12" fill="none" stroke="#FFECB3" stroke-width="2" opacity="0.7"/>
   <text x="150" y="52" text-anchor="middle" fill="#FFFDE7" font-family="Arial" font-size="30" font-weight="bold">🐜 개미 습격!</text>
 </svg>"""
+# 보스 웨이브 배너는 같은 스프라이트 코스튬 추가용
+WAVEBOSS_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="300" height="80" viewBox="0 0 300 80">
+  <rect x="4" y="4" width="292" height="72" rx="16" fill="#4A148C" opacity="0.95" stroke="#FFD54F" stroke-width="5"/>
+  <rect x="12" y="12" width="276" height="56" rx="12" fill="none" stroke="#E1BEE7" stroke-width="2" opacity="0.8"/>
+  <text x="150" y="52" text-anchor="middle" fill="#FFE082" font-family="Arial" font-size="28" font-weight="bold">👑 보스 습격!</text>
+</svg>"""
 
 # -------- 게임오버 배너 --------
 RESULT_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="360" height="160" viewBox="0 0 360 160">
@@ -537,6 +543,10 @@ V_Z2HP    = "varZ2HP38"       # 헬멧개미_체력 18
 V_Z2SP    = "varZ2SP39"       # 헬멧개미_속도 0.75
 V_Z3HP    = "varZ3HP41"       # 빠른개미_체력 6
 V_Z3SP    = "varZ3SP42"       # 빠른개미_속도 1.5
+V_Z4HP    = "varZ4HP95"       # 보스개미_체력 55  (타입4, 웨이브 5의 배수)
+V_Z4SP    = "varZ4SP96"       # 보스개미_속도 0.55
+V_BOSSMOD = "varBossMod97"    # 보스웨이브배수 5  (웨이브 mod 이 값 = 0 이면 보스)
+V_BOSSHPX = "varBossHpX98"    # 보스체력배율 2  (웨이브체력증가에 곱해 더 단단)
 # 빗자루/그리드 9
 V_MOWSPD  = "varMowSpd44"     # 빗자루속도 12
 V_GX      = "varGx45"         # 격자시작X -160
@@ -974,6 +984,8 @@ def build_stage_blocks():
     add_set("개미갉기력", V_BITE, 0.45)
     add_set("헬멧개미_체력", V_Z2HP, 18); add_set("헬멧개미_속도", V_Z2SP, 0.75)
     add_set("빠른개미_체력", V_Z3HP, 6); add_set("빠른개미_속도", V_Z3SP, 1.5)
+    add_set("보스개미_체력", V_Z4HP, 55); add_set("보스개미_속도", V_Z4SP, 0.55)
+    add_set("보스웨이브배수", V_BOSSMOD, 5); add_set("보스체력배율", V_BOSSHPX, 2)
     # 빗자루/그리드
     add_set("빗자루속도", V_MOWSPD, 12)
     add_set("격자시작X", V_GX, -160); add_set("격자간격X", V_GXSTEP, 40)
@@ -1071,10 +1083,34 @@ def build_stage_blocks():
     # 웨이브 시작 + 클리어
     bc_wave = b_broadcast(bs, "웨이브시작", BR_WAVE)
     set_spn0 = b_setvar(bs, "스폰카운트", V_SPAWNN, 0)
+    # 보스 웨이브: 웨이브 mod 보스웨이브배수 = 0 이면 왕관 보스개미 1마리 선스폰
+    boss_mod = op("operator_mod", vrep("웨이브", V_WAVE), vrep("보스웨이브배수", V_BOSSMOD))
+    is_boss_w = cmp_op("operator_equals", boss_mod, 0)
+    wave_ge5 = b_not(bs, cmp_op("operator_lt", vrep("웨이브", V_WAVE), vrep("보스웨이브배수", V_BOSSMOD)))
+    # 웨이브>=배수 AND mod=0 (웨이브0 방지 — 시작이 1이라 mod 0 이면 5,10,...)
+    c_boss = bool_op("operator_and", wave_ge5, is_boss_w)
+    set_tboss = b_setvar(bs, "생성타입", V_SPTYPE, 4)
+    rlane_b_to = vrep("레인개수", V_ROWS)
+    rlane_b = gen(); bs[rlane_b] = mk("operator_random", inputs={"FROM": num(1), "TO": slot(rlane_b_to)})
+    bs[rlane_b_to]["parent"] = rlane_b
+    set_lboss = b_setvar(bs, "생성레인", V_SPLANE, rlane_b)
+    inc_ab = b_changevar(bs, "적수", V_ALIVE, 1)
+    bc_sb = b_broadcast(bs, "개미생성", BR_SPAWN)
+    w_boss = b_wait(bs, 0.8)
+    chain([(set_tboss, bs[set_tboss]), (set_lboss, bs[set_lboss]),
+           (inc_ab, bs[inc_ab]), (bc_sb, bs[bc_sb]), (w_boss, bs[w_boss])])
+    if_boss = b_if(bs, c_boss, set_tboss)
     alive_le0 = cmp_op("operator_lt", vrep("적수", V_ALIVE), 1)   # 적수<=0
     wu_clear = b_waituntil(bs, alive_le0)
     # 클리어 보너스 (게임상태=1)
     add_sun = b_changevar(bs, "설탕", V_SUNCUR, vrep("웨이브클리어설탕", V_WAVESUN))
+    # 보스 웨이브 클리어 보너스 설탕 추가 (같은 웨이브클리어설탕 한 번 더)
+    boss_mod2 = op("operator_mod", vrep("웨이브", V_WAVE), vrep("보스웨이브배수", V_BOSSMOD))
+    is_boss_w2 = cmp_op("operator_equals", boss_mod2, 0)
+    wave_ge5b = b_not(bs, cmp_op("operator_lt", vrep("웨이브", V_WAVE), vrep("보스웨이브배수", V_BOSSMOD)))
+    c_boss2 = bool_op("operator_and", wave_ge5b, is_boss_w2)
+    add_sun_b = b_changevar(bs, "설탕", V_SUNCUR, vrep("웨이브클리어설탕", V_WAVESUN))
+    if_boss_bonus = b_if(bs, c_boss2, add_sun_b)
     inc_wave = b_changevar(bs, "웨이브", V_WAVE, 1)
     ge_cone = b_not(bs, cmp_op("operator_lt", vrep("웨이브", V_WAVE), vrep("헬멧해금웨이브", V_UNCONE)))
     set_uncone = b_setvar(bs, "헬멧해금", V_UNCONEF, 1)
@@ -1084,10 +1120,12 @@ def build_stage_blocks():
     if_unfast = b_if(bs, ge_fast, set_unfast)
     w_between = b_wait_var(bs, V_WAVEW, "웨이브사이대기")
     st1_clear = cmp_op("operator_equals", vrep("게임상태", V_STATE), 1)
-    chain([(add_sun, bs[add_sun]), (inc_wave, bs[inc_wave]), (if_uncone, bs[if_uncone]),
+    chain([(add_sun, bs[add_sun]), (if_boss_bonus, bs[if_boss_bonus]),
+           (inc_wave, bs[inc_wave]), (if_uncone, bs[if_uncone]),
            (if_unfast, bs[if_unfast]), (w_between, bs[w_between])])
     if_clear = b_if(bs, st1_clear, add_sun)
-    chain([(bc_wave, bs[bc_wave]), (set_spn0, bs[set_spn0]), (rep_spawn, bs[rep_spawn]),
+    chain([(bc_wave, bs[bc_wave]), (set_spn0, bs[set_spn0]), (if_boss, bs[if_boss]),
+           (rep_spawn, bs[rep_spawn]),
            (wu_clear, bs[wu_clear]), (if_clear, bs[if_clear])])
     st1_play = cmp_op("operator_equals", vrep("게임상태", V_STATE), 1)
     if_play = b_if(bs, st1_play, bc_wave)
@@ -1170,8 +1208,8 @@ def build_stage_blocks():
         x=-380, y=560, w=330, h=160)
     add_comment(bs, comments, hb,
         "🌊 웨이브마다 개미 수 = 기본개미수 + (웨이브-1)×웨이브당개미증가.\n"
-        "체력도 종류값 + (웨이브-1)×웨이브체력증가 로 세져요(기본 +5/웨이브 — 금방 단단해짐!).\n"
-        "웨이브1=기본, 2=헬멧, 3=빠른. 후반은 밀크폭탄 연타가 답!",
+        "체력도 종류값 + (웨이브-1)×웨이브체력증가 로 세져요(기본 +5/웨이브).\n"
+        "웨이브 5·10·15…(보스웨이브배수)마다 👑보스개미 등장! 후반은 밀크 연타!",
         x=720, y=-20, w=330, h=170)
     add_comment(bs, comments, hc,
         "🍬 하늘에서 설탕이 떨어져요(하늘설탕간격마다).\n"
@@ -1262,7 +1300,23 @@ def build_zombie_blocks():
     if_t1 = ztype_branch(1, V_Z1HP, "기본개미_체력", V_Z1SP, "기본개미_속도", "기본개미", 55)
     if_t2 = ztype_branch(2, V_Z2HP, "헬멧개미_체력", V_Z2SP, "헬멧개미_속도", "헬멧개미", 56)
     if_t3 = ztype_branch(3, V_Z3HP, "빠른개미_체력", V_Z3SP, "빠른개미_속도", "빠른개미", 54)
-    chain([(if_t1, bs[if_t1]), (if_t2, bs[if_t2]), (if_t3, bs[if_t3])])
+    # 보스(타입4): 체력 = 보스개미_체력 + (웨이브-1)×웨이브체력증가×보스체력배율
+    cond_t4 = cmp_op("operator_equals", vrep("내타입", V_Z_TYPE), 4)
+    wm_b = op("operator_subtract", vrep("웨이브", V_WAVE), 1)
+    hpscl_b = op("operator_multiply", wm_b, vrep("웨이브체력증가", V_HPINC))
+    hpscl_bb = op("operator_multiply", hpscl_b, vrep("보스체력배율", V_BOSSHPX))
+    hp_boss = op("operator_add", vrep("보스개미_체력", V_Z4HP), hpscl_bb)
+    set_hp4 = b_setvar(bs, "내체력", V_Z_HP, hp_boss)
+    wm_b2 = op("operator_subtract", vrep("웨이브", V_WAVE), 1)
+    spscl_b = op("operator_multiply", wm_b2, vrep("웨이브속도증가", V_SPINC))
+    # 보스는 속도 증가를 절반만 받음(너무 빨라지지 않게)
+    half_sp = op("operator_divide", spscl_b, 2)
+    sp_boss = op("operator_add", vrep("보스개미_속도", V_Z4SP), half_sp)
+    set_sp4 = b_setvar(bs, "내속도", V_Z_SPD, sp_boss)
+    sw4 = b_costume(bs, "보스개미"); sz4 = b_setsize(bs, 78)
+    chain([(set_hp4, bs[set_hp4]), (set_sp4, bs[set_sp4]), (sw4, bs[sw4]), (sz4, bs[sz4])])
+    if_t4 = b_if(bs, cond_t4, set_hp4)
+    chain([(if_t1, bs[if_t1]), (if_t2, bs[if_t2]), (if_t3, bs[if_t3]), (if_t4, bs[if_t4])])
 
     laneY = b_item_of(bs, "레인Y", L_LANEY, vrep("내레인", V_Z_LANE))
     g = b_gotoxy(bs, vrep("개미생성X", V_ZSPAWNX), laneY)
@@ -1293,6 +1347,7 @@ def build_zombie_blocks():
     ak1 = atk_pair(1, "기본개미공", "기본개미공2")
     ak2 = atk_pair(2, "헬멧개미공", "헬멧개미공2")
     ak3 = atk_pair(3, "빠른개미공", "빠른개미공2")
+    ak4 = atk_pair(4, "보스개미공", "보스개미공2")
     # 소리는 격번만 (짝수 프레임) → 연타 소음 완화
     am_snd = op("operator_mod", vrep("애니", V_Z_ANIM), 2)
     even_snd = cmp_op("operator_equals", am_snd, 0)
@@ -1304,7 +1359,7 @@ def build_zombie_blocks():
     x_back = b_changex(bs, 2)
     w_atk2 = b_wait(bs, 0.07)
     chain([(flip_atk, bs[flip_atk]),
-           (ak1, bs[ak1]), (ak2, bs[ak2]), (ak3, bs[ak3]),
+           (ak1, bs[ak1]), (ak2, bs[ak2]), (ak3, bs[ak3]), (ak4, bs[ak4]),
            (if_snd, bs[if_snd]),
            (x_push, bs[x_push]), (w_atk1, bs[w_atk1]),
            (x_back, bs[x_back]), (w_atk2, bs[w_atk2])])
@@ -1322,8 +1377,10 @@ def build_zombie_blocks():
     a1 = anim_pair(1, "기본개미", "기본개미2")
     a2 = anim_pair(2, "헬멧개미", "헬멧개미2")
     a3 = anim_pair(3, "빠른개미", "빠른개미2")
-    chain([(mv, bs[mv]), (flip_anim, bs[flip_anim]), (a1, bs[a1]), (a2, bs[a2]), (a3, bs[a3])])
-    if_chomp = b_ifelse(bs, tc_plant, sh_ch, mv)
+    a4 = anim_pair(4, "보스개미", "보스개미2")
+    chain([(mv, bs[mv]), (flip_anim, bs[flip_anim]),
+           (a1, bs[a1]), (a2, bs[a2]), (a3, bs[a3]), (a4, bs[a4])])
+    if_chomp = b_ifelse(bs, tc_plant, flip_atk, mv)
     play.append(if_chomp)
     # 창고 앞 도달
     x_le = cmp_op("operator_not", 0, 0)  # placeholder, replaced below
@@ -2266,6 +2323,9 @@ def main():
     c_z2k1, _ = costume_png("ant_helmet_atk1", "헬멧개미공2", ZOMBIE2_SVG, 28, 28)
     c_z3k0, _ = costume_png("ant_fast_atk0", "빠른개미공", ZOMBIE3_SVG, 28, 28)
     c_z3k1, _ = costume_png("ant_fast_atk1", "빠른개미공2", ZOMBIE3_SVG, 28, 28)
+    c_z4a, c_z4b = pair("ant_boss", "보스개미", "보스개미2", ZOMBIE2_SVG, 36, 36)
+    c_z4k0, _ = costume_png("ant_boss_atk0", "보스개미공", ZOMBIE2_SVG, 36, 36)
+    c_z4k1, _ = costume_png("ant_boss_atk1", "보스개미공2", ZOMBIE2_SVG, 36, 36)
     c_zb, _ = costume_png("ant_boom", "개미터짐", ZOMBIE_BOOM_SVG, 28, 28)
     c_pea0, c_pea1 = pair("cookie_bullet", "쿠키알", "쿠키알2", PEA_SVG, 14, 14)
     c_sf0, c_sf1 = pair("sugar_machine", "설탕기계", "설탕기계2", SUNFLOWER_SVG, 30, 35)
@@ -2352,6 +2412,8 @@ def main():
             V_Z1HP: ["기본개미_체력", 8], V_Z1SP: ["기본개미_속도", 0.85], V_BITE: ["개미갉기력", 0.45],
             V_Z2HP: ["헬멧개미_체력", 18], V_Z2SP: ["헬멧개미_속도", 0.75], V_Z3HP: ["빠른개미_체력", 6],
             V_Z3SP: ["빠른개미_속도", 1.5],
+            V_Z4HP: ["보스개미_체력", 55], V_Z4SP: ["보스개미_속도", 0.55],
+            V_BOSSMOD: ["보스웨이브배수", 5], V_BOSSHPX: ["보스체력배율", 2],
             V_MOWSPD: ["빗자루속도", 12], V_GX: ["격자시작X", -160], V_GXSTEP: ["격자간격X", 40],
             V_LY: ["레인시작Y", 110], V_LYSTEP: ["레인간격Y", 55], V_COLS: ["열개수", 9], V_ROWS: ["레인개수", 5],
             V_ZSPAWNX: ["개미생성X", 250], V_REACHH: ["개미도달X", -190],
@@ -2409,8 +2471,8 @@ def main():
         "lists": {}, "broadcasts": {},
         "blocks": z_blocks, "comments": z_cmt,
         "currentCostume": 0,
-        "costumes": [c_z1a, c_z1b, c_z2a, c_z2b, c_z3a, c_z3b,
-                     c_z1k0, c_z1k1, c_z2k0, c_z2k1, c_z3k0, c_z3k1, c_zb],
+        "costumes": [c_z1a, c_z1b, c_z2a, c_z2b, c_z3a, c_z3b, c_z4a, c_z4b,
+                     c_z1k0, c_z1k1, c_z2k0, c_z2k1, c_z3k0, c_z3k1, c_z4k0, c_z4k1, c_zb],
         "sounds": [snd("chomp", chomp_s, chomp_n), snd("zdie", zdie_s, zdie_n)],
         "volume": 100, "layerOrder": 6, "visible": False,
         "x": 250, "y": 110, "size": 55, "direction": 90,
