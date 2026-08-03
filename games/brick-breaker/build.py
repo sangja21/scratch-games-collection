@@ -21,10 +21,7 @@ PADDLE_Y = -150
 BALL_SPEED = 22
 SLOW_SPEED = 12
 
-# stage patterns: 0 empty, 1-6 color, 7 hard, 8 bomb, 9 boss (stage 5 only)
-BOSS_HP = 12
-BOSS_SIZE = 280  # % — 일반 벽돌(90)보다 훨씬 큰 왕벽돌
-
+# stage patterns: 0 empty, 1-6 color, 7 hard, 8 bomb
 STAGES = [
     # 1: 풀 컬러 격자 (classic intro)
     [
@@ -62,14 +59,14 @@ STAGES = [
         "1111811111",
         "2222222222",
     ],
-    # 5: 보스 판 — 중앙 왕벽돌(9) + 호위 소수
+    # 5: 다이아몬드 + 폭탄 코어
     [
-        "7000000007",
-        "0000000000",
-        "0000900000",
-        "7000000007",
-        "0800000080",
-        "1110000111",
+        "0011111100",
+        "0177777710",
+        "1788888871",
+        "1788888871",
+        "0177777710",
+        "0011111100",
     ],
 ]
 
@@ -279,7 +276,6 @@ V_PREY = "varPrevY"          # 이동 전 Y (패들 스윕 판정)
 V_SPAWNMAIN = "varSpawnMain" # 스폰 직전 타입 플래그 (Stage)
 V_MAINLIVE = "varMainLive"   # 메인공 생존 여부 0/1 (Stage)
 V_READY = "varReady"         # 1=벽돌 생성 끝, 발사 가능
-V_BOSSHP = "varBossHp"       # 보스 체력 (스테이지5 모니터)
 V_BGMVOL = "varBgmVol"       # 브금볼륨 %
 
 # 난장판(카오스) 시스템 손잡이/내부값
@@ -352,7 +348,6 @@ def build_stage():
     S("스폰메인", V_SPAWNMAIN, 1)
     S("메인존재", V_MAINLIVE, 0)
     S("준비됨", V_READY, 0)
-    S("보스체력", V_BOSSHP, 0)
     bc = b_broadcast(bs, "게임시작", BR_START)
     seq.append((bc, bs[bc]))
     bc2 = b_broadcast(bs, "스테이지시작", BR_STAGE)
@@ -855,7 +850,6 @@ def build_brick():
     # 클론 delete 스크립트가 먼저 돌 시간을 준 뒤 스폰 (레이스 방지)
     wait_wipe = b_wait(bs, 0.15)
     set_cnt = b_set(bs, "남은벽돌", V_BRICKS, 0)
-    set_boss0 = b_set(bs, "보스체력", V_BOSSHP, 0)
     # For each stage we need map — use 스테이지 var and if ladder for 5 stages
     # Compact: loop r,c and call a "get cell" using formula from stage
     # Easiest path: 5 separate scripts when stage equals N — heavy but clear
@@ -891,11 +885,8 @@ def build_brick():
                     hp, kind = 1, t
                 elif t == 7:
                     hp, kind = 2, 7
-                elif t == 8:
-                    hp, kind = 1, 8
                 else:
-                    # 9 = 보스 왕벽돌
-                    hp, kind = BOSS_HP, 9
+                    hp, kind = 1, 8
                 x = OX + c * BW
                 y = OY - r * BH
                 # 스폰 변수 설정 후 클론 생성 → wait 0 으로 클론이
@@ -905,14 +896,11 @@ def build_brick():
                 s2 = b_set(bs, "스폰Y", V_BY, y)
                 s3 = b_set(bs, "스폰체력", V_BHP, hp)
                 s4 = b_set(bs, "스폰종류", V_BTYPE, kind)
-                steps = [(s1, bs[s1]), (s2, bs[s2]), (s3, bs[s3]), (s4, bs[s4])]
-                if kind == 9:
-                    sb = b_set(bs, "보스체력", V_BOSSHP, BOSS_HP)
-                    steps.append((sb, bs[sb]))
                 cc = create_clone(bs)
                 w0 = b_wait(bs, 0)
-                steps.extend([(cc, bs[cc]), (w0, bs[w0])])
-                chain(steps)
+                chain([(s1, bs[s1]), (s2, bs[s2]), (s3, bs[s3]), (s4, bs[s4]),
+                       (cc, bs[cc]), (w0, bs[w0])])
+
                 if first is None:
                     first = s1
                 if prev is not None:
@@ -954,7 +942,7 @@ def build_brick():
     # 벽돌 전부 스폰 후 준비완료 → 그때부터 발사 가능 + 메인공 생성
     set_ready = b_set(bs, "준비됨", V_READY, 1)
     bc_ready = b_broadcast(bs, "준비완료", BR_READY)
-    chain([(wait_wipe, bs[wait_wipe]), (set_boss0, bs[set_boss0]), (set_cnt, bs[set_cnt]), (if1, bs[if1])])
+    chain([(wait_wipe, bs[wait_wipe]), (set_cnt, bs[set_cnt]), (if1, bs[if1])])
     # after if1: set ready + broadcast
     # find end of if1 (ifelse is single block)
     bs[if1]["next"] = set_ready
@@ -980,10 +968,8 @@ def build_brick():
     # if kind 7 hard, 8 bomb, else c{kind}
     c7 = cmp_op("operator_equals", vrep("종류", V_KIND), 7)
     c8 = cmp_op("operator_equals", vrep("종류", V_KIND), 8)
-    c9 = cmp_op("operator_equals", vrep("종류", V_KIND), 9)
     sw_h = costume_name(bs, "hard")
     sw_b = costume_name(bs, "bomb")
-    sw_boss = costume_name(bs, "boss1")
     def cos_for(k):
         return costume_name(bs, f"c{k}")
     sw6 = cos_for(6)
@@ -993,31 +979,13 @@ def build_brick():
         cur = b_ifelse(bs, ck, cos_for(k), cur)
     if_bomb = b_ifelse(bs, c8, sw_b, cur)
     if_hard = b_ifelse(bs, c7, sw_h, if_bomb)
-    if_boss_cos = b_ifelse(bs, c9, sw_boss, if_hard)
-    # 보스 = 큰 사이즈, 일반 = 90
-    ssz_boss = gen(); bs[ssz_boss] = mk("looks_setsizeto", inputs={"SIZE": num(BOSS_SIZE)})
-    ssz_norm = gen(); bs[ssz_norm] = mk("looks_setsizeto", inputs={"SIZE": num(90)})
-    ssz = b_ifelse(bs, cmp_op("operator_equals", vrep("종류", V_KIND), 9), ssz_boss, ssz_norm)
+    ssz = gen(); bs[ssz] = mk("looks_setsizeto", inputs={"SIZE": num(90)})
     sh = gen(); bs[sh] = mk("looks_show")
     rs = gen(); bs[rs] = mk("motion_setrotationstyle", fields={"STYLE": ["don't rotate", None]})
 
     # 히트 처리 한 벌을 새 블록으로 찍어내는 헬퍼 (forever·방송 두 곳에서 재사용)
     def make_hit_chain():
         hit_dec = b_chg(bs, "체력", V_HP, -1)
-        # 보스: 모니터 동기화 + 페이즈 코스튬
-        c_is_boss = cmp_op("operator_equals", vrep("종류", V_KIND), 9)
-        sync_bhp = b_set(bs, "보스체력", V_BOSSHP, vrep("체력", V_HP))
-        # hp>8 boss1 / hp>4 boss2 / else boss3
-        cos_b1 = costume_name(bs, "boss1")
-        cos_b2 = costume_name(bs, "boss2")
-        cos_b3 = costume_name(bs, "boss3")
-        c_hi = cmp_op("operator_gt", vrep("체력", V_HP), 8)
-        c_mid = cmp_op("operator_gt", vrep("체력", V_HP), 4)
-        ph_mid = b_ifelse(bs, c_mid, cos_b2, cos_b3)
-        ph = b_ifelse(bs, c_hi, cos_b1, ph_mid)
-        chain([(sync_bhp, bs[sync_bhp]), (ph, bs[ph])])
-        if_boss_ph = b_if(bs, c_is_boss, sync_bhp)
-
         hit_crack_c = bool_op("operator_and",
                               cmp_op("operator_equals", vrep("종류", V_KIND), 7),
                               cmp_op("operator_equals", vrep("체력", V_HP), 1))
@@ -1025,7 +993,6 @@ def build_brick():
         hit_if_cr = b_if(bs, hit_crack_c, hit_sw)
         hit_dead_c = cmp_op("operator_lt", vrep("체력", V_HP), 1)
         snd_break = play_sound(bs, "break")
-        # 일반 파괴 vs 보스 파괴
         hit_sc = b_chg(bs, "점수", V_SCORE, 10)
         hit_br = b_chg(bs, "남은벽돌", V_BRICKS, -1)
         hit_bom_c = cmp_op("operator_equals", vrep("종류", V_KIND), 8)
@@ -1056,60 +1023,11 @@ def build_brick():
         chain([(snd_break, bs[snd_break]), (hit_sc, bs[hit_sc]), (hit_br, bs[hit_br]),
                (hit_if_bom, bs[hit_if_bom]), (hit_st, bs[hit_st]), (hit_if_dr, bs[hit_if_dr]),
                (hit_if_cl, bs[hit_if_cl]), (hit_del, bs[hit_del])])
-
-        # 보스 사망: 점수 크게 + 남은벽돌 0 + 강제 클리어 (호위 남아도 클리어)
-        boss_sc = b_chg(bs, "점수", V_SCORE, 300)
-        boss_zero = b_set(bs, "보스체력", V_BOSSHP, 0)
-        boss_br0 = b_set(bs, "남은벽돌", V_BRICKS, 0)
-        boss_bc = b_broadcast(bs, "스테이지클리어", BR_CLEAR)
-        boss_del = gen(); bs[boss_del] = mk("control_delete_this_clone")
-        c_can_cl = cmp_op("operator_equals", vrep("게임상태", V_STATE), 1)
-        boss_if_cl = b_if(bs, c_can_cl, boss_bc)
-        chain([(boss_sc, bs[boss_sc]), (boss_zero, bs[boss_zero]), (boss_br0, bs[boss_br0]),
-               (boss_if_cl, bs[boss_if_cl]), (boss_del, bs[boss_del])])
-        # 보스 생존 칩: 점수 + 드롭(좋/나쁨)
-        boss_chip_sc = b_chg(bs, "점수", V_SCORE, 25)
-        boss_chip_snd = play_sound(bs, "hit")
-        boss_rnd = gen(); bs[boss_rnd] = mk("operator_random", inputs={"FROM": num(1), "TO": num(100)})
-        boss_st = b_set(bs, "임시", V_TMP, boss_rnd)
-        # <28 좋은 파워 / <42 공속 상승(방해) / 그 외 없음
-        c_good = cmp_op("operator_lt", vrep("임시", V_TMP), 28)
-        c_bad = cmp_op("operator_lt", vrep("임시", V_TMP), 42)
-        bxp = gen(); bs[bxp] = mk("motion_xposition")
-        byp = gen(); bs[byp] = mk("motion_yposition")
-        bsx = b_set(bs, "스폰X", V_BX, bxp)
-        bsy = b_set(bs, "스폰Y", V_BY, byp)
-        brp = gen(); bs[brp] = mk("operator_random", inputs={"FROM": num(1), "TO": num(6)})
-        bpu = b_set(bs, "파워종류", V_PU, brp)
-        bcm = gen(); bs[bcm] = mk("control_create_clone_of_menu", fields={"CLONE_OPTION": ["파워업", None]}, shadow=True)
-        bcc = gen(); bs[bcc] = mk("control_create_clone_of", inputs={"CLONE_OPTION": [1, bcm]})
-        bs[bcm]["parent"] = bcc
-        chain([(bsx, bs[bsx]), (bsy, bs[bsy]), (bpu, bs[bpu]), (bcc, bs[bcc])])
-        if_good = b_if(bs, c_good, bsx)
-        # bad: 공속도 +2 (상한 이하)
-        c_spd_ok = cmp_op("operator_lt", vrep("공속도", V_SPD), vrep("공속상한", V_SPDMAX))
-        bad_up = b_chg(bs, "공속도", V_SPD, 2)
-        if_spd = b_if(bs, c_spd_ok, bad_up)
-        # bad only if not good: 28<=tmp<42
-        c_bad_only = bool_op("operator_and",
-                             cmp_op("operator_gt", vrep("임시", V_TMP), 27),
-                             c_bad)
-        if_bad = b_if(bs, c_bad_only, if_spd)
-        chain([(boss_chip_sc, bs[boss_chip_sc]), (boss_chip_snd, bs[boss_chip_snd]),
-               (boss_st, bs[boss_st]), (if_good, bs[if_good]), (if_bad, bs[if_bad])])
-        c_boss_alive = cmp_op("operator_gt", vrep("체력", V_HP), 0)
-        boss_live_or_die = b_ifelse(bs, c_boss_alive, boss_chip_sc, boss_sc)
-        if_boss_hit = b_if(bs, c_is_boss, boss_live_or_die)
-
-        # 일반 벽돌만 (보스 kind=9 제외)
-        c_not_boss = not_op(cmp_op("operator_equals", vrep("종류", V_KIND), 9))
+        hit_if_dead = b_if(bs, hit_dead_c, snd_break)
         snd_chip = play_sound(bs, "hit")
         hit_alive_c = cmp_op("operator_gt", vrep("체력", V_HP), 0)
-        hit_if_chip = b_if(bs, bool_op("operator_and", hit_alive_c, c_not_boss), snd_chip)
-        hit_if_dead = b_if(bs, bool_op("operator_and", hit_dead_c, c_not_boss), snd_break)
-
-        chain([(hit_dec, bs[hit_dec]), (if_boss_ph, bs[if_boss_ph]), (hit_if_cr, bs[hit_if_cr]),
-               (if_boss_hit, bs[if_boss_hit]), (hit_if_dead, bs[hit_if_dead]),
+        hit_if_chip = b_if(bs, hit_alive_c, snd_chip)
+        chain([(hit_dec, bs[hit_dec]), (hit_if_cr, bs[hit_if_cr]), (hit_if_dead, bs[hit_if_dead]),
                (hit_if_chip, bs[hit_if_chip])])
         return hit_dec
 
@@ -1124,7 +1042,7 @@ def build_brick():
     chain([(lw, bs[lw]), (w0, bs[w0])])
     fe = b_forever(bs, if_hit)
     chain([(ch, bs[ch]), (set_isc, bs[set_isc]), (set_hp, bs[set_hp]), (set_k, bs[set_k]),
-           (gt, bs[gt]), (if_boss_cos, bs[if_boss_cos]), (ssz, bs[ssz]), (rs, bs[rs]), (sh, bs[sh]),
+           (gt, bs[gt]), (if_hard, bs[if_hard]), (ssz, bs[ssz]), (rs, bs[rs]), (sh, bs[sh]),
            (fe, bs[fe])])
 
     # 벽돌타격 방송: 공이 닿은 그 프레임에 벽돌이 스스로 touching 공 판정 → 반드시 히트
@@ -1460,34 +1378,6 @@ def main():
     bricks += [costume_png(f"{GEN}/brick_hard.png", "hard", br=1),
                costume_png(f"{GEN}/brick_hard2.png", "hard2", br=1),
                costume_png(f"{GEN}/brick_bomb.png", "bomb", br=1)]
-    # 보스 왕벽돌 3페이즈 (금→금가→파괴직전)
-    def _make_boss(path, phase):
-        # base brick size ~ similar aspect; large via looks size
-        w, h = 84, 40
-        im = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-        from PIL import ImageDraw
-        d = ImageDraw.Draw(im)
-        if phase == 1:
-            fill, edge = (180, 40, 220, 255), (255, 215, 80, 255)
-        elif phase == 2:
-            fill, edge = (140, 30, 180, 255), (255, 180, 60, 255)
-        else:
-            fill, edge = (90, 20, 110, 255), (255, 100, 80, 255)
-        d.rounded_rectangle([2, 2, w - 3, h - 3], radius=6, fill=fill, outline=edge, width=3)
-        # crown gem
-        d.ellipse([w // 2 - 8, 8, w // 2 + 8, 22], fill=(255, 230, 90, 255), outline=(255, 255, 200, 255))
-        if phase >= 2:
-            d.line([(12, 10), (28, 28)], fill=(40, 0, 50, 220), width=2)
-            d.line([(w - 14, 12), (w - 30, 30)], fill=(40, 0, 50, 220), width=2)
-        if phase >= 3:
-            d.line([(20, 8), (40, 32)], fill=(20, 0, 30, 230), width=3)
-            d.line([(50, 6), (70, 34)], fill=(20, 0, 30, 230), width=3)
-            d.ellipse([8, 24, 16, 32], fill=(255, 80, 60, 200))
-        im.save(path)
-    for ph in (1, 2, 3):
-        bp = os.path.join(GEN, f"boss{ph}.png")
-        _make_boss(bp, ph)
-        bricks.append(costume_png(bp, f"boss{ph}", br=1))
     pus = [costume_png(f"{GEN}/pu_{c}.png", c, br=1) for c in "MWLCPS"]
     # 얇은 레이저 빔 (10px). 공보다 뒤 레이어라 공을 가리지 않음.
     laser_path = os.path.join(GEN, "laser_thin.png")
@@ -1545,8 +1435,8 @@ def main():
             V_SPAWNMAIN: ["스폰메인", 1],
             V_MAINLIVE: ["메인존재", 0],
             V_READY: ["준비됨", 0],
-            V_BOSSHP: ["보스체력", 0],
             V_CLOCK: ["광란시계", 0], V_FRENZY: ["광란레벨", 1], V_LASERTIME: ["레이저타임", 0],
+
             V_FLASHCOL: ["번쩍색", 0], V_WAVEGAP: ["웨이브간격", 4], V_LASGAP: ["레이저간격", 7],
             V_SPDGAP: ["공속상승간격", 6], V_WAVEN: ["웨이브개수", 3], V_LASSHOTS: ["레이저연사", 16],
             V_SPDMAX: ["공속상한", 28],
@@ -1644,10 +1534,6 @@ def main():
         {"id": V_STAGE, "mode": "default", "opcode": "data_variable",
          "params": {"VARIABLE": "스테이지"}, "spriteName": None, "value": 1,
          "width": 0, "height": 0, "x": 5, "y": 65, "visible": True,
-         "sliderMin": 0, "sliderMax": 99, "isDiscrete": True},
-        {"id": V_BOSSHP, "mode": "large", "opcode": "data_variable",
-         "params": {"VARIABLE": "보스체력"}, "spriteName": None, "value": 0,
-         "width": 0, "height": 0, "x": 360, "y": 5, "visible": True,
          "sliderMin": 0, "sliderMax": 99, "isDiscrete": True},
     ]
     project = {
