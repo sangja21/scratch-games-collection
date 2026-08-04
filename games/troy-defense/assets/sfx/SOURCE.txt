@@ -1,0 +1,30 @@
+Troy Defense SFX sources (user-provided 2026-08-04)
+
+Sources:
+  swoshes.7z              — qubodup / OpenGameArt style swooshes (swosh-*.flac)
+  qubodup-wobble.7z       — wobble1/2.wav
+  Magic Smite.wav
+  105016__julien-matthey__jm-fx-fireball-01.wav
+  shoot.ogg
+
+Mapping (game <- source):
+  arrow      <- shoot.ogg
+  cannon     <- swosh-28.flac (trim ~1.2s)
+  magic      <- fireball (trim ~1.2s)
+  hit        <- swosh-09.flac
+  kill       <- Magic Smite.wav (trim ~1.3s)
+  coin       <- qubodup-wobble2.wav (trim ~0.6s)
+  castlehit  <- swosh-31.flac (trim ~1.2s)
+  horn       <- swosh-23.flac (trim ~1.5s, wave fanfare whoosh)
+  build      <- swosh-01.flac
+  error      <- swosh-02.flac
+  upgrade    <- qubodup-wobble1.wav (trim ~0.7s)
+  repair     <- swosh-04.flac
+  thunder    <- Magic Smite.wav (trim ~1.4s)
+  skapolo    <- fireball (trim ~1.2s)
+  skares     <- swosh-35.flac (trim ~1.1s)
+  skartemis  <- swosh-12.flac
+  skzeus     <- Magic Smite.wav (trim ~1.5s)
+
+All converted to mono 22050 Hz WAV for Scratch.
+Originals also under assets/sfx/src/
