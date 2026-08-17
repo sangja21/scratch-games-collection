@@ -531,9 +531,22 @@ V_TROLLHP   = "varTrollHP24"     # 영웅_체력 20
 V_TROLLSP   = "varTrollSP25"     # 영웅_속도 0.9
 V_TROLLGOLD = "varTrollGold26"   # 영웅_골드 25
 # 난이도 스케일 + 보스 (웨이브 5마다)
+# ★ 성장 곡선: 아군(강화)은 곱셈으로 세지는데 적이 덧셈으로만 세지면 후반이 처진다.
+#   그래서 적체력배율도 **곱셈 성장**을 기본으로 둔다.
+#     클리어 시 → 적체력배율 = 적체력배율 × 웨이브체력배수 + 웨이브배율증가
+#     보스 클리어 시 → 추가로 × 보스후배율
 V_HPSCALE   = "varHpScale104"    # 적체력배율 1.0 (진행 중 증가)
-V_HPSCALE_INC = "varHpScaleInc105"  # 웨이브배율증가 0.2 (일반 웨이브 클리어 시 +)
-V_HPSCALE_BOSS = "varHpScaleBoss106"  # 보스후배율 1.5 (보스 웨이브 클리어 시 ×)
+V_HPSCALE_INC = "varHpScaleInc105"  # 웨이브배율증가 0.05 (덧셈 성장분)
+V_HPSCALE_MUL = "varHpScaleMul114"  # 웨이브체력배수 1.15 (곱셈 성장분 ★ 핵심 난이도 핸들)
+V_HPSCALE_BOSS = "varHpScaleBoss106"  # 보스후배율 1.4 (보스 웨이브 클리어 시 ×)
+V_CNTMAX    = "varCountMax115"   # 그리스군수상한 30 (웨이브가 늘어져 처지는 것 방지)
+V_GAPDEC    = "varGapDec116"     # 간격감소 0.02 (웨이브마다 스폰 간격 줄어듦)
+V_GAPMIN    = "varGapMin117"     # 그리스군간격최소 0.35
+V_SPMAX     = "varSpMax118"      # 속도증가상한 1.2 (적 속도 보너스 최대치)
+V_ELITEW    = "varEliteWave119"  # 정예웨이브 8 (이때부터 경보병 안 나옴 · 보스웨이브 5·10 과 겹치지 않게)
+V_WAVECNT   = "varWaveCnt120"    # 이번웨이브수 (상한 적용된 실제 스폰 마리수)
+V_GAPCUR    = "varGapCur121"     # 이번간격 (상한 적용된 실제 스폰 간격)
+V_SPDBONUS  = "varSpdBonus122"   # 속도보너스 (웨이브당 누적, 상한 적용)
 V_BOSSEVERY = "varBossEvery107"  # 보스주기 5
 V_BOSSHP0   = "varBossHp0108"    # 보스기본체력 90
 V_BOSSHPINC = "varBossHpInc109"  # 보스단계체력 55 (보스번호마다 추가)
@@ -931,11 +944,21 @@ def build_stage_blocks():
     add_set("영웅_체력", V_TROLLHP, 20)
     add_set("영웅_속도", V_TROLLSP, 0.9)
     add_set("영웅_골드", V_TROLLGOLD, 25)
-    # 난이도: 일반 웨이브 클리어 시 배율+0.2 / 보스 클리어 시 ×1.5
-    # (×2 는 후반이 너무 급격 — 보스후배율 변수로 조절)
+    # 난이도 곡선 ★ — 아군 강화는 곱셈으로 세진다(공격력+12/연사×0.6/탑 증설).
+    #   적도 곱셈으로 따라오게: 클리어마다 배율 ×1.15 (+0.05), 보스 클리어면 추가 ×1.4.
+    #   웨이브체력배수 1.0 으로 두면 예전(덧셈만) 곡선 = 후반에 처짐.
     add_set("적체력배율", V_HPSCALE, 1)
-    add_set("웨이브배율증가", V_HPSCALE_INC, 0.2)
-    add_set("보스후배율", V_HPSCALE_BOSS, 1.5)
+    add_set("웨이브체력배수", V_HPSCALE_MUL, 1.15)
+    add_set("웨이브배율증가", V_HPSCALE_INC, 0.05)
+    add_set("보스후배율", V_HPSCALE_BOSS, 1.4)
+    add_set("그리스군수상한", V_CNTMAX, 30)
+    add_set("간격감소", V_GAPDEC, 0.02)
+    add_set("그리스군간격최소", V_GAPMIN, 0.35)
+    add_set("속도증가상한", V_SPMAX, 1.2)
+    add_set("정예웨이브", V_ELITEW, 8)
+    add_set("이번웨이브수", V_WAVECNT, 6)
+    add_set("이번간격", V_GAPCUR, 0.8)
+    add_set("속도보너스", V_SPDBONUS, 0)
     add_set("보스주기", V_BOSSEVERY, 5)
     add_set("보스기본체력", V_BOSSHP0, 90)
     add_set("보스단계체력", V_BOSSHPINC, 55)
@@ -1056,7 +1079,8 @@ def build_stage_blocks():
     # broadcast 웨이브시작 ; 스폰카운트=0 ; repeat(count){ 생성타입 결정 ; +1 ; 적수+1 ; 그리스군생성 ; wait } ; 스폰완료=1
     bc_wave = b_broadcast(bs, "웨이브시작", BR_WAVE)
     set_spn0 = b_setvar(bs, "스폰카운트", V_SPAWNN, 0)
-    # 종류 결정: 웨이브<=1 →1 / 웨이브<=3 →1+(스폰카운트 mod 2) / else →1+random(0,2)
+    # 종류 결정: 웨이브<=1 →1 / 웨이브<=3 →1+(스폰카운트 mod 2)
+    #            / 정예웨이브 전 →1+random(0,2) / 정예웨이브부터 →2+random(0,1) (경보병 제외)
     set_t1 = b_setvar(bs, "생성타입", V_SPAWNT, 1)
     spn_r = vrep("스폰카운트", V_SPAWNN); mod2 = op("operator_mod", spn_r, 2)
     t_alt = op("operator_add", 1, mod2)
@@ -1068,21 +1092,54 @@ def build_stage_blocks():
     set_tmix = gen(); bs[set_tmix] = mk("data_setvariableto",
         inputs={"VALUE": slot(t_mix)}, fields={"VARIABLE": ["생성타입", V_SPAWNT]})
     bs[t_mix]["parent"] = set_tmix
+    # 정예웨이브부터: 경보병(1) 제외, 호플리테스(2)/영웅(3)만
+    rnd01 = gen(); bs[rnd01] = mk("operator_random", inputs={"FROM": num(0), "TO": num(1)})
+    t_elite = op("operator_add", 2, rnd01)
+    set_telite = gen(); bs[set_telite] = mk("data_setvariableto",
+        inputs={"VALUE": slot(t_elite)}, fields={"VARIABLE": ["생성타입", V_SPAWNT]})
+    bs[t_elite]["parent"] = set_telite
+    cond_elite = cmp_op("operator_lt", vrep("웨이브", V_WAVE), vrep("정예웨이브", V_ELITEW))
+    if_elite = b_ifelse(bs, cond_elite, set_tmix, set_telite)
     wave_r2 = vrep("웨이브", V_WAVE); cond_w3 = cmp_op("operator_lt", wave_r2, 4)  # 웨이브<=3
-    if_w3 = b_ifelse(bs, cond_w3, set_talt, set_tmix)
+    if_w3 = b_ifelse(bs, cond_w3, set_talt, if_elite)
     wave_r1 = vrep("웨이브", V_WAVE); cond_w1 = cmp_op("operator_lt", wave_r1, 2)  # 웨이브<=1
     if_type = b_ifelse(bs, cond_w1, set_t1, if_w3)
     inc_spn = b_changevar(bs, "스폰카운트", V_SPAWNN, 1)
     inc_alive = b_changevar(bs, "적수", V_ALIVE, 1)
     bc_spawn = b_broadcast(bs, "그리스군생성", BR_SPAWN)
-    w_gap = b_wait_var(bs, V_SPGAP, "그리스군간격")
+    w_gap = b_wait_var(bs, V_GAPCUR, "이번간격")
     chain([(if_type, bs[if_type]), (inc_spn, bs[inc_spn]), (inc_alive, bs[inc_alive]),
            (bc_spawn, bs[bc_spawn]), (w_gap, bs[w_gap])])
+
+    # ── 이번 웨이브 파라미터 계산 (마리수 상한 · 스폰간격 하한 · 속도보너스 상한) ──
     base_r = vrep("기본그리스군수", V_BASECNT); wave_rc = vrep("웨이브", V_WAVE)
     wm1 = op("operator_subtract", wave_rc, 1); cinc_r = vrep("웨이브당그리스군증가", V_CNTINC)
     extra = op("operator_multiply", wm1, cinc_r)
     count_r = op("operator_add", base_r, extra)
-    rep_spawn = b_repeat(bs, count_r, if_type)
+    set_cnt = b_setvar(bs, "이번웨이브수", V_WAVECNT, count_r)
+    c_cntmax = cmp_op("operator_gt", vrep("이번웨이브수", V_WAVECNT), vrep("그리스군수상한", V_CNTMAX))
+    set_cntmax = b_setvar(bs, "이번웨이브수", V_WAVECNT, vrep("그리스군수상한", V_CNTMAX))
+    if_cntmax = b_if(bs, c_cntmax, set_cntmax)
+    # 간격 = 그리스군간격 - (웨이브-1)×간격감소, 최소 그리스군간격최소
+    gdec = op("operator_multiply", op("operator_subtract", vrep("웨이브", V_WAVE), 1),
+              vrep("간격감소", V_GAPDEC))
+    gap_expr = op("operator_subtract", vrep("그리스군간격", V_SPGAP), gdec)
+    set_gap = b_setvar(bs, "이번간격", V_GAPCUR, gap_expr)
+    c_gapmin = cmp_op("operator_lt", vrep("이번간격", V_GAPCUR), vrep("그리스군간격최소", V_GAPMIN))
+    set_gapmin = b_setvar(bs, "이번간격", V_GAPCUR, vrep("그리스군간격최소", V_GAPMIN))
+    if_gapmin = b_if(bs, c_gapmin, set_gapmin)
+    # 속도보너스 = (웨이브-1)×웨이브속도증가, 최대 속도증가상한
+    sbon = op("operator_multiply", op("operator_subtract", vrep("웨이브", V_WAVE), 1),
+              vrep("웨이브속도증가", V_SPINC))
+    set_sbon = b_setvar(bs, "속도보너스", V_SPDBONUS, sbon)
+    c_sbmax = cmp_op("operator_gt", vrep("속도보너스", V_SPDBONUS), vrep("속도증가상한", V_SPMAX))
+    set_sbmax = b_setvar(bs, "속도보너스", V_SPDBONUS, vrep("속도증가상한", V_SPMAX))
+    if_sbmax = b_if(bs, c_sbmax, set_sbmax)
+    wave_params = [(set_cnt, bs[set_cnt]), (if_cntmax, bs[if_cntmax]),
+                   (set_gap, bs[set_gap]), (if_gapmin, bs[if_gapmin]),
+                   (set_sbon, bs[set_sbon]), (if_sbmax, bs[if_sbmax])]
+
+    rep_spawn = b_repeat(bs, vrep("이번웨이브수", V_WAVECNT), if_type)
     # 보스 웨이브: 웨이브 % 보스주기 == 0 → 보스 1기 (타입 4) 추가 스폰
     # 보스번호 = 웨이브 / 보스주기 (5→1 아킬레우스, 10→2 메넬라오스, …)
     bmod = op("operator_mod", vrep("웨이브", V_WAVE), vrep("보스주기", V_BOSSEVERY))
@@ -1097,8 +1154,8 @@ def build_stage_blocks():
            (inc_alive_b, bs[inc_alive_b]), (bc_spawn_b, bs[bc_spawn_b]), (w_boss, bs[w_boss])])
     if_boss = b_if(bs, c_boss_wave, set_bidx)
     set_done = b_setvar(bs, "스폰완료", V_SPAWNED, 1)
-    chain([(bc_wave, bs[bc_wave]), (set_spn0, bs[set_spn0]),
-           (rep_spawn, bs[rep_spawn]), (if_boss, bs[if_boss]), (set_done, bs[set_done])])
+    chain([(bc_wave, bs[bc_wave]), (set_spn0, bs[set_spn0])] + wave_params +
+          [(rep_spawn, bs[rep_spawn]), (if_boss, bs[if_boss]), (set_done, bs[set_done])])
     state_b = vrep("게임상태", V_STATE); cond_pl = cmp_op("operator_equals", state_b, 1)
     spd_r = vrep("스폰완료", V_SPAWNED); cond_notdone = cmp_op("operator_equals", spd_r, 0)
     cond_go = bool_op("operator_and", cond_pl, cond_notdone)
@@ -1139,17 +1196,22 @@ def build_stage_blocks():
     c12 = bool_op("operator_and", c1, c2); c_clear = bool_op("operator_and", c12, c3)
     wg_r = vrep("웨이브클리어골드", V_WAVEGOLD)
     add_gold = b_changevar(bs, "골드", V_GOLDCUR, wg_r)
-    # 난이도 성장: 보스 웨이브면 배율×보스후배율, 아니면 배율+웨이브배율증가
+    # 난이도 성장 ★ 곱셈 기본:
+    #   적체력배율 = 적체력배율 × 웨이브체력배수 + 웨이브배율증가
+    #   보스 웨이브였으면 추가로 × 보스후배율
+    sc_grow = op("operator_add",
+                 op("operator_multiply", vrep("적체력배율", V_HPSCALE),
+                    vrep("웨이브체력배수", V_HPSCALE_MUL)),
+                 vrep("웨이브배율증가", V_HPSCALE_INC))
+    set_sc = b_setvar(bs, "적체력배율", V_HPSCALE, sc_grow)
     bmod_c = op("operator_mod", vrep("웨이브", V_WAVE), vrep("보스주기", V_BOSSEVERY))
     c_was_boss = cmp_op("operator_equals", bmod_c, 0)
     sc_mul = op("operator_multiply", vrep("적체력배율", V_HPSCALE), vrep("보스후배율", V_HPSCALE_BOSS))
     set_sc_boss = b_setvar(bs, "적체력배율", V_HPSCALE, sc_mul)
-    sc_add = op("operator_add", vrep("적체력배율", V_HPSCALE), vrep("웨이브배율증가", V_HPSCALE_INC))
-    set_sc_norm = b_setvar(bs, "적체력배율", V_HPSCALE, sc_add)
-    if_sc = b_ifelse(bs, c_was_boss, set_sc_boss, set_sc_norm)
+    if_sc = b_if(bs, c_was_boss, set_sc_boss)
     set_st2 = b_setvar(bs, "게임상태", V_STATE, 2)
     bc_up = b_broadcast(bs, "강화등장", BR_UP)
-    chain([(add_gold, bs[add_gold]), (if_sc, bs[if_sc]),
+    chain([(add_gold, bs[add_gold]), (set_sc, bs[set_sc]), (if_sc, bs[if_sc]),
            (set_st2, bs[set_st2]), (bc_up, bs[bc_up])])
     if_clear = b_if(bs, c_clear, add_gold)
     # 게임오버: 성벽체력<1 and 게임상태=1 → 게임상태=0
@@ -1176,8 +1238,12 @@ def build_stage_blocks():
         "길이 바뀌어요(미션 4층: 더 구불구불한 길 만들기).",
         x=-380, y=420, w=320, h=150)
     add_comment(bs, comments, hb,
-        "🌊 웨이브 수 = 기본 + (웨이브-1)×증가. 체력은 적체력배율로 커짐.\n"
-        "일반 클리어: 배율+웨이브배율증가(0.2). 보스 클리어(5·10·15…): 배율×보스후배율(1.5).\n"
+        "🌊 웨이브 수 = 기본 + (웨이브-1)×증가, 단 그리스군수상한(30)까지.\n"
+        "스폰 간격은 웨이브마다 간격감소(0.02)씩 줄어 그리스군간격최소(0.35)에서 멈춤.\n"
+        "★ 체력 성장은 곱셈: 클리어마다 적체력배율 ×웨이브체력배수(1.15) +웨이브배율증가(0.05),\n"
+        "보스 클리어(5·10·15…)면 추가로 ×보스후배율(1.4).\n"
+        "웨이브체력배수를 1 로 두면 덧셈 성장만 남아 후반이 쉬워짐(처짐).\n"
+        "정예웨이브(8)부터는 경보병이 안 나오고 호플리테스·영웅만 온다.\n"
         "보스(약→강): 아가멤논→메넬라오스→아킬레우스 (5·10·15…, 전용 에셋).",
         x=720, y=-20, w=340, h=180)
 
@@ -1261,9 +1327,9 @@ def build_monster_blocks():
         flat = op("operator_multiply", wm1, hpinc)
         hp_expr = op("operator_add", scaled, flat)
         set_hp = b_setvar(bs, "내체력", V_MON_HP, hp_expr)
-        base_sp = vrep(sp_nm, sp_id); wv2 = vrep("웨이브", V_WAVE)
-        wm2 = op("operator_subtract", wv2, 1); spinc = vrep("웨이브속도증가", V_SPINC)
-        scl2 = op("operator_multiply", wm2, spinc); sp_expr = op("operator_add", base_sp, scl2)
+        # 속도 = 타입속도 + 속도보너스 (웨이브 매니저가 상한까지만 올려 둠)
+        base_sp = vrep(sp_nm, sp_id)
+        sp_expr = op("operator_add", base_sp, vrep("속도보너스", V_SPDBONUS))
         set_sp = b_setvar(bs, "내속도", V_MON_SPD, sp_expr)
         set_gd = b_setvar(bs, "내골드", V_MON_GOLD, vrep(gd_nm, gd_id))
         sw = b_costume(bs, costume)
@@ -3219,8 +3285,13 @@ def main():
             V_GOBHP: ["경보병_체력", 3], V_GOBSP: ["경보병_속도", 2.2], V_GOBGOLD: ["경보병_골드", 5],
             V_ORCHP: ["호플리테스_체력", 8], V_ORCSP: ["호플리테스_속도", 1.5], V_ORCGOLD: ["호플리테스_골드", 10],
             V_TROLLHP: ["영웅_체력", 20], V_TROLLSP: ["영웅_속도", 0.9], V_TROLLGOLD: ["영웅_골드", 25],
-            V_HPSCALE: ["적체력배율", 1], V_HPSCALE_INC: ["웨이브배율증가", 0.2],
-            V_HPSCALE_BOSS: ["보스후배율", 1.5], V_BOSSEVERY: ["보스주기", 5],
+            V_HPSCALE: ["적체력배율", 1], V_HPSCALE_INC: ["웨이브배율증가", 0.05],
+            V_HPSCALE_MUL: ["웨이브체력배수", 1.15],
+            V_HPSCALE_BOSS: ["보스후배율", 1.4], V_BOSSEVERY: ["보스주기", 5],
+            V_CNTMAX: ["그리스군수상한", 30], V_GAPDEC: ["간격감소", 0.02],
+            V_GAPMIN: ["그리스군간격최소", 0.35], V_SPMAX: ["속도증가상한", 1.2],
+            V_ELITEW: ["정예웨이브", 8], V_WAVECNT: ["이번웨이브수", 6],
+            V_GAPCUR: ["이번간격", 0.8], V_SPDBONUS: ["속도보너스", 0],
             V_BOSSHP0: ["보스기본체력", 90], V_BOSSHPINC: ["보스단계체력", 55],
             V_BOSSSP: ["보스속도", 0.65], V_BOSSGOLD0: ["보스기본골드", 60], V_BOSSIDX: ["보스번호", 0],
             V_ARR: ["궁수대_사거리", 135], V_ARD: ["궁수대_공격력", 4], V_ARG: ["궁수대_간격", 0.35],
