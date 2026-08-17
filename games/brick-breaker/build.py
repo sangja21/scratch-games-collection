@@ -278,7 +278,7 @@ V_MAINLIVE = "varMainLive"   # 메인공 생존 여부 0/1 (Stage)
 V_READY = "varReady"         # 1=벽돌 생성 끝, 발사 가능
 V_BGMVOL = "varBgmVol"       # 브금볼륨 %
 
-# 난장판(카오스) 시스템 손잡이/내부값
+# 난장판(카오스) 시스템 핸들/내부값
 V_CLOCK = "varClock"         # 광란시계 (스케줄러 틱)
 V_FRENZY = "varFrenzy"       # 광란레벨 (시간 지날수록 ↑)
 V_LASERTIME = "varLaserTime" # 레이저 광란 남은 연사수
@@ -289,6 +289,13 @@ V_SPDGAP = "varSpdGap"       # 공속 상승 간격(초)
 V_WAVEN = "varWaveN"         # 웨이브당 노란공 수
 V_LASSHOTS = "varLasShots"   # 레이저 광란 지속(연사 횟수)
 V_SPDMAX = "varSpdMax"       # 공속 상한
+V_PAT = "varPat"             # 현재 스테이지가 쓸 벽돌 패턴 번호 (1..패턴수 순환)
+V_AUTOLAUNCH = "varAutoLaunch"  # 자동발사까지 기다리는 시간(초)
+
+# 엔들리스 튜닝
+SPD_MAX_CAP = 34             # 스테이지가 올라가며 공속상한이 여기까지 오름
+LIFE_CAP = 5                 # 한 바퀴(패턴 전부) 돌 때마다 +1 목숨, 이 값까지
+AUTO_LAUNCH_SEC = 1.2        # 공이 패들에 붙은 뒤 자동 발사까지
 
 # 플레이필드
 WALL_L, WALL_R, WALL_T = -220, 220, 165
@@ -325,7 +332,7 @@ def build_stage():
     S("아이템확률", V_PCHANCE, 30)
     S("멀티볼최대", V_MAXBALLS, 12)
     S("패들기본", V_PBASE, 100)
-    # 난장판 손잡이 + 내부값
+    # 난장판 핸들 + 내부값
     S("광란시계", V_CLOCK, 0)
     S("광란레벨", V_FRENZY, 1)
     S("레이저타임", V_LASERTIME, 0)
@@ -336,6 +343,8 @@ def build_stage():
     S("웨이브개수", V_WAVEN, 3)
     S("레이저연사", V_LASSHOTS, 16)
     S("공속상한", V_SPDMAX, 28)
+    S("패턴", V_PAT, 1)
+    S("자동발사", V_AUTOLAUNCH, AUTO_LAUNCH_SEC)
     S("브금볼륨", V_BGMVOL, 55)
     S("임시", V_TMP, 0)
     S("검사i", V_I, 0)
@@ -386,24 +395,19 @@ def build_stage():
     clr_sp = b_broadcast(bs, "스파크", BR_SPARK)
     add_sc = b_chg(bs, "점수", V_SCORE, 500)
     inc_s = b_chg(bs, "스테이지", V_STAGE, 1)
-    c_max = cmp_op("operator_gt", vrep("스테이지", V_STAGE), len(STAGES))
-    # ── 전 스테이지 클리어 → 풀 리셋 후 1스테이지부터 다시 ──
-    wrap_s = b_set(bs, "스테이지", V_STAGE, 1)
-    wrap_life = b_set(bs, "목숨", V_LIVES, 3)
-    wrap_score = b_set(bs, "점수", V_SCORE, 0)
-    wrap_fr = b_set(bs, "광란레벨", V_FRENZY, 1)
-    wrap_ck = b_set(bs, "광란시계", V_CLOCK, 0)
-    wrap_lt = b_set(bs, "레이저타임", V_LASERTIME, 0)
-    wrap_sl = b_set(bs, "감속", V_SLOW, 0)
-    wrap_bl = b_set(bs, "공개수", V_BALLS, 0)
-    wrap_ml = b_set(bs, "메인존재", V_MAINLIVE, 0)
-    wrap_spd = b_set(bs, "공속도", V_SPD, BALL_SPEED)
-    chain([(wrap_s, bs[wrap_s]), (wrap_life, bs[wrap_life]), (wrap_score, bs[wrap_score]),
-           (wrap_fr, bs[wrap_fr]), (wrap_ck, bs[wrap_ck]), (wrap_lt, bs[wrap_lt]),
-           (wrap_sl, bs[wrap_sl]), (wrap_bl, bs[wrap_bl]), (wrap_ml, bs[wrap_ml]),
-           (wrap_spd, bs[wrap_spd])])
-    # stage > max → 풀 리셋 / 아니면 클리어 보너스 +500
-    if_wrap = b_ifelse(bs, c_max, wrap_s, add_sc)
+    # ── 엔들리스: 스테이지는 리셋 없이 계속 올라간다 ──
+    # 벽돌 패턴은 순환(패턴 = ((스테이지-1) mod 패턴수)+1, 벽돌 스프라이트에서 계산),
+    # 대신 스테이지마다 공속상한을 1씩 올려 난도를 계속 끌어올린다.
+    c_spdcap = cmp_op("operator_lt", vrep("공속상한", V_SPDMAX), SPD_MAX_CAP)
+    up_spdcap = b_chg(bs, "공속상한", V_SPDMAX, 1)
+    if_spdcap = b_if(bs, c_spdcap, up_spdcap)
+    # 한 바퀴(패턴 전부) 돌 때마다 목숨 +1 (LIFE_CAP 까지)
+    lap_mod = op("operator_mod", op("operator_subtract", vrep("스테이지", V_STAGE), 1), len(STAGES))
+    c_lap = bool_op("operator_and",
+                    cmp_op("operator_equals", lap_mod, 0),
+                    cmp_op("operator_lt", vrep("목숨", V_LIVES), LIFE_CAP))
+    add_life = b_chg(bs, "목숨", V_LIVES, 1)
+    if_lap = b_if(bs, c_lap, add_life)
     # 공통: 파워/관통 초기화 → 잠깐 연출 → 스테이지시작(and wait)
     reset_m = b_set(bs, "패들모드", V_MODE, 0)
     reset_pi = b_set(bs, "관통", V_PIERCE, 0)
@@ -413,7 +417,8 @@ def build_stage():
     unlock = b_set(bs, "게임상태", V_STATE, 1)
     chain([(lock_st, bs[lock_st]), (lock_rdy, bs[lock_rdy]), (lock_ln, bs[lock_ln]),
            (snd_clear, bs[snd_clear]), (clr_fc, bs[clr_fc]), (clr_fl, bs[clr_fl]),
-           (clr_sp, bs[clr_sp]), (inc_s, bs[inc_s]), (if_wrap, bs[if_wrap]),
+           (clr_sp, bs[clr_sp]), (inc_s, bs[inc_s]), (add_sc, bs[add_sc]),
+           (if_spdcap, bs[if_spdcap]), (if_lap, bs[if_lap]),
            (reset_m, bs[reset_m]), (reset_pi, bs[reset_pi]),
            (reset_sl, bs[reset_sl]), (w, bs[w]), (bc_st, bs[bc_st]), (unlock, bs[unlock])])
     if_clear = b_if(bs, c_can_clear, lock_st)
@@ -517,6 +522,24 @@ def build_stage():
     chain([(fz_wait, bs[fz_wait]), (fz_if, bs[fz_if])])
     fz_fe = b_forever(bs, fz_wait)
     chain([(hfz, bs[hfz]), (fz_fe, bs[fz_fe])])
+
+    # 5) 자동 발사 — 공이 패들에 붙어 있으면 "자동발사"초 뒤 알아서 쏜다.
+    #    (가만히 있어도 노란 보너스공이 벽돌을 깨서 클리어되던 무행동 플레이 차단)
+    hal = gen(); bs[hal] = mk("event_whenbroadcastreceived", top=True, x=360, y=700,
+        fields={"BROADCAST_OPTION": ["게임시작", BR_START]})
+    al_stuck = lambda: bool_op("operator_and",
+                              bool_op("operator_and", c_playing(), c_rdy()),
+                              cmp_op("operator_equals", vrep("발사됨", V_LAUNCH), 0))
+    al_wait = wait_var("자동발사", V_AUTOLAUNCH)
+    al_set = b_set(bs, "발사됨", V_LAUNCH, 1)
+    # 기다리는 동안 스테이지가 넘어갔을 수 있으니 한 번 더 확인하고 쏜다
+    al_if2 = b_if(bs, al_stuck(), al_set)
+    chain([(al_wait, bs[al_wait]), (al_if2, bs[al_if2])])
+    al_if = b_if(bs, al_stuck(), al_wait)
+    al_tick = b_wait(bs, 0.1)
+    chain([(al_tick, bs[al_tick]), (al_if, bs[al_if])])
+    al_fe = b_forever(bs, al_tick)
+    chain([(hal, bs[hal]), (al_fe, bs[al_fe])])
 
     # 5) 배경 색 드리프트 — 은은하게 배경 색이 계속 흐름 (가독성 위해 약하게 고정)
     hbg = gen(); bs[hbg] = mk("event_whenbroadcastreceived", top=True, x=360, y=680,
@@ -921,7 +944,15 @@ def build_brick():
         bs[sc]["parent"] = end
         return first, count
 
-    # if stage == 1..5
+    # 엔들리스: 스테이지는 무한히 올라가고 패턴만 순환한다.
+    # 패턴 = ((스테이지 - 1) mod 패턴수) + 1
+    pat_calc = op("operator_add",
+                  op("operator_mod",
+                     op("operator_subtract", vrep("스테이지", V_STAGE), 1),
+                     len(STAGES)),
+                  1)
+    set_pat = b_set(bs, "패턴", V_PAT, pat_calc)
+
     heads = []
     for si in range(len(STAGES)):
         hd, _ = make_stage_spawn(si)
@@ -930,10 +961,10 @@ def build_brick():
     # if stage==5: h4 elif stage==4 ... 
     # Simple: repeat check
     # stage 1
-    c1 = cmp_op("operator_equals", vrep("스테이지", V_STAGE), 1)
-    c2 = cmp_op("operator_equals", vrep("스테이지", V_STAGE), 2)
-    c3 = cmp_op("operator_equals", vrep("스테이지", V_STAGE), 3)
-    c4 = cmp_op("operator_equals", vrep("스테이지", V_STAGE), 4)
+    c1 = cmp_op("operator_equals", vrep("패턴", V_PAT), 1)
+    c2 = cmp_op("operator_equals", vrep("패턴", V_PAT), 2)
+    c3 = cmp_op("operator_equals", vrep("패턴", V_PAT), 3)
+    c4 = cmp_op("operator_equals", vrep("패턴", V_PAT), 4)
     # default 5
     if4 = b_ifelse(bs, c4, heads[3], heads[4])
     if3 = b_ifelse(bs, c3, heads[2], if4)
@@ -942,7 +973,8 @@ def build_brick():
     # 벽돌 전부 스폰 후 준비완료 → 그때부터 발사 가능 + 메인공 생성
     set_ready = b_set(bs, "준비됨", V_READY, 1)
     bc_ready = b_broadcast(bs, "준비완료", BR_READY)
-    chain([(wait_wipe, bs[wait_wipe]), (set_cnt, bs[set_cnt]), (if1, bs[if1])])
+    chain([(wait_wipe, bs[wait_wipe]), (set_cnt, bs[set_cnt]),
+           (set_pat, bs[set_pat]), (if1, bs[if1])])
     # after if1: set ready + broadcast
     # find end of if1 (ifelse is single block)
     bs[if1]["next"] = set_ready
@@ -1440,6 +1472,7 @@ def main():
             V_FLASHCOL: ["번쩍색", 0], V_WAVEGAP: ["웨이브간격", 4], V_LASGAP: ["레이저간격", 7],
             V_SPDGAP: ["공속상승간격", 6], V_WAVEN: ["웨이브개수", 3], V_LASSHOTS: ["레이저연사", 16],
             V_SPDMAX: ["공속상한", 28],
+            V_PAT: ["패턴", 1], V_AUTOLAUNCH: ["자동발사", AUTO_LAUNCH_SEC],
             V_BGMVOL: ["브금볼륨", 55],
         },
 
